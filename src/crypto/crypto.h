@@ -21,6 +21,8 @@
 #ifndef CRYPTO_H
 #define CRYPTO_H
 
+#include "common/attacks.h"
+
 /**
  * md4_vector - MD4 hash for data vector
  * @num_elem: Number of elements in the data vector
@@ -897,5 +899,10 @@ struct wpabuf * crypto_ecdh_get_pubkey(struct crypto_ecdh *ecdh, int inc_y);
 struct wpabuf * crypto_ecdh_set_peerkey(struct crypto_ecdh *ecdh, int inc_y,
 					const u8 *key, size_t len);
 void crypto_ecdh_deinit(struct crypto_ecdh *ecdh);
+
+#ifdef DRAGONBLOOD_TESTS
+struct crypto_ec * crypto_ec_subgroup(struct crypto_ec_point **out_generator);
+int crypto_bignum_setint(struct crypto_bignum *bignum, unsigned long value);
+#endif // DRAGONBLOOD_TESTS
 
 #endif /* CRYPTO_H */
