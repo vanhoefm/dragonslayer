@@ -12,7 +12,6 @@
 // of the DragonBlood attacks.
 #define DRAGONBLOOD_TESTS
 
-// TODO
-//void poc_log(const u8 *clientmac, const char *format, ...);
+void poc_log(const u8 *clientmac, const char *format, ...);
 
 #endif // ATTACKS_H_

@@ -12,6 +12,35 @@
 #include "eap_defs.h"
 #include "eap_common.h"
 
+#include "common/attacks.h"
+
+#ifdef DRAGONBLOOD_TESTS
+#include <time.h>
+
+void poc_log(const u8 *clientmac, const char *format, ...)
+{
+	time_t rawtime;
+	struct tm *timeinfo;
+
+	va_list arg;
+	va_start(arg, format);
+
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	if (clientmac == NULL) {
+		printf("[%02d:%02d:%02d] ", timeinfo->tm_hour,
+			timeinfo->tm_min, timeinfo->tm_sec);
+	} else {
+		printf("[%02d:%02d:%02d] " MACSTR ": ", timeinfo->tm_hour,
+			timeinfo->tm_min, timeinfo->tm_sec, MAC2STR(clientmac));
+	}
+
+	vprintf(format, arg);
+
+	va_end(arg);
+}
+#endif
+
 /**
  * eap_hdr_len_valid - Validate EAP header length field
  * @msg: EAP frame (starting with EAP header)

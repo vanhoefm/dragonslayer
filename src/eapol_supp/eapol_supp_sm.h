@@ -11,6 +11,8 @@
 
 #include "common/defs.h"
 
+#include "common/attacks.h"
+
 typedef enum { Unauthorized, Authorized } PortStatus;
 typedef enum { Auto, ForceUnauthorized, ForceAuthorized } PortControl;
 
@@ -314,6 +316,9 @@ void eapol_sm_step(struct eapol_sm *sm);
 int eapol_sm_get_status(struct eapol_sm *sm, char *buf, size_t buflen,
 			int verbose);
 int eapol_sm_get_mib(struct eapol_sm *sm, char *buf, size_t buflen);
+#ifdef DRAGONBLOOD_TESTS
+unsigned char * eapol_sm_get_addr(void *eapol_ctx);
+#endif // DRAGONBLOOD_TESTS
 void eapol_sm_configure(struct eapol_sm *sm, int heldPeriod, int authPeriod,
 			int startPeriod, int maxStart);
 int eapol_sm_rx_eapol(struct eapol_sm *sm, const u8 *src, const u8 *buf,
