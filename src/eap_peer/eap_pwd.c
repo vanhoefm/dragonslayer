@@ -574,8 +574,8 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	    crypto_bignum_mod(data->my_scalar,
 			      crypto_ec_get_order(data->grp->group),
 			      data->my_scalar) < 0) {
-		wpa_printf(MSG_INFO,
-			   "EAP-pwd (peer): unable to force scalar for zero");
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx),
+			   "EAP-pwd (peer): unable to force scalar to zero");
 		goto fin;
 	}
 
@@ -701,7 +701,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 /** We send the subgroup generator as our peer element */
 #ifdef DRAGONBLOOD_TESTS
 	if (data->subgroup == NULL) {
-		data->subgroup = crypto_ec_subgroup(&data->subgroup_generator);
+		data->subgroup = crypto_ec_subgroup(269, &data->subgroup_generator);
 		if (data->subgroup == NULL) {
 			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: failed to initialize subgroup parameters!\n");
 			exit(1);

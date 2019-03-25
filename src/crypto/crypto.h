@@ -901,7 +901,7 @@ struct wpabuf * crypto_ecdh_set_peerkey(struct crypto_ecdh *ecdh, int inc_y,
 void crypto_ecdh_deinit(struct crypto_ecdh *ecdh);
 
 #ifdef DRAGONBLOOD_TESTS
-struct crypto_ec * crypto_ec_subgroup(struct crypto_ec_point **out_generator);
+struct crypto_ec * crypto_ec_subgroup(int size, struct crypto_ec_point **out_generator);
 int crypto_bignum_setint(struct crypto_bignum *bignum, unsigned long value);
 #endif // DRAGONBLOOD_TESTS
 
