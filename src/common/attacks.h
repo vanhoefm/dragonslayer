@@ -8,9 +8,18 @@
 #ifndef ATTACKS_H_
 #define ATTACKS_H_
 
+// This is always defined. Use to clearly mark the changes we
+// made to the original hostap code.
+#define DRAGONBLOOD
+
 // Make changes to hostapd and wpa_supplicant to test several
 // of the DragonBlood attacks.
-#define DRAGONBLOOD_TESTS
+#define DRAGONBLOOD_INVALID_CUVE
+
+// Invalid curve attack against Aruba's Windows client: use a
+// scalar equal to zero, and as element the point at infinity.
+// Only has an effect if DRAGONBLOOD_INVALID_CUVE is also set.
+#define DRAGONBLOOD_ARUBA_CLIENT
 
 void poc_log(const u8 *clientmac, const char *format, ...);
 

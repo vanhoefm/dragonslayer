@@ -316,9 +316,9 @@ void eapol_sm_step(struct eapol_sm *sm);
 int eapol_sm_get_status(struct eapol_sm *sm, char *buf, size_t buflen,
 			int verbose);
 int eapol_sm_get_mib(struct eapol_sm *sm, char *buf, size_t buflen);
-#ifdef DRAGONBLOOD_TESTS
+#ifdef DRAGONBLOOD
 unsigned char * eapol_sm_get_addr(void *eapol_ctx);
-#endif // DRAGONBLOOD_TESTS
+#endif // DRAGONBLOOD
 void eapol_sm_configure(struct eapol_sm *sm, int heldPeriod, int authPeriod,
 			int startPeriod, int maxStart);
 int eapol_sm_rx_eapol(struct eapol_sm *sm, const u8 *src, const u8 *buf,

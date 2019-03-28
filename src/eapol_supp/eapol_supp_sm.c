@@ -1083,13 +1083,13 @@ static const char * eapol_port_control(PortControl ctrl)
 #endif /* CONFIG_CTRL_IFACE || !CONFIG_NO_STDOUT_DEBUG */
 
 
-#ifdef DRAGONBLOOD_TESTS
+#ifdef DRAGONBLOOD
 unsigned char * eapol_sm_get_addr(void *eapol_ctx)
 {
 	struct eapol_sm *sm = (struct eapol_sm *)eapol_ctx;
 	return sm->dot1xSuppLastEapolFrameSource;
 }
-#endif // DRAGONBLOOD_TESTS
+#endif // DRAGONBLOOD
 
 
 /**

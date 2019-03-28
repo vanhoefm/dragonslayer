@@ -14,7 +14,7 @@
 
 #include "common/attacks.h"
 
-#ifdef DRAGONBLOOD_TESTS
+#ifdef DRAGONBLOOD
 #include <time.h>
 
 void poc_log(const u8 *clientmac, const char *format, ...)

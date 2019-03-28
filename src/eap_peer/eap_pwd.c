@@ -17,11 +17,11 @@
 #include "eap_peer/eap_i.h"
 #include "eap_common/eap_pwd_common.h"
 
-#ifdef DRAGONBLOOD_TESTS
-#include "eapol_supp/eapol_supp_sm.h"
-#endif // DRAGONBLOOD_TESTS
-
 #include "common/attacks.h"
+
+#ifdef DRAGONBLOOD
+#include "eapol_supp/eapol_supp_sm.h"
+#endif // DRAGONBLOOD
 
 struct eap_pwd_data {
 	enum {
@@ -39,7 +39,7 @@ struct eap_pwd_data {
 	u8 prep;
 	u8 token[4];
 	EAP_PWD_group *grp;
-#ifdef DRAGONBLOOD_TESTS
+#ifdef DRAGONBLOOD_INVALID_CUVE
 	struct crypto_ec *subgroup;
 	struct crypto_ec_point *subgroup_generator;
 #endif
@@ -566,7 +566,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	}
 
 /** Test if a scalar equal to zero is accepted */
-#ifdef DRAGONBLOOD_TESTS
+#ifdef DRAGONBLOOD_INVALID_CUVE
 	if (crypto_bignum_sub(crypto_ec_get_order(data->grp->group),
 	                      data->private_value, mask) < 0 ||
 	    crypto_bignum_add(data->private_value, mask,
@@ -580,7 +580,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	}
 
 	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending a scalar equal to zero\n");
-#endif // DRAGONBLOOD_TESTS
+#endif // DRAGONBLOOD_INVALID_CUVE
 
 	if (crypto_ec_point_mul(data->grp->group, data->grp->pwe, mask,
 				data->my_element) < 0) {
@@ -699,7 +699,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 		goto fin;
 
 /** We send the subgroup generator as our peer element */
-#ifdef DRAGONBLOOD_TESTS
+#ifdef DRAGONBLOOD_INVALID_CUVE
 	if (data->subgroup == NULL) {
 		data->subgroup = crypto_ec_subgroup(269, &data->subgroup_generator);
 		if (data->subgroup == NULL) {
@@ -714,7 +714,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 		exit(1);
 	}
 	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending generator of small subgroup as the element\n");
-#endif // DRAGONBLOOD_TESTS
+#endif // DRAGONBLOOD_INVALID_CUVE
 
 	/* we send the element as (x,y) follwed by the scalar */
 	wpabuf_put_data(data->outbuf, element, 2 * prime_len);
@@ -734,7 +734,7 @@ fin:
 }
 
 
-#ifndef DRAGONBLOOD_TESTS
+#ifndef DRAGONBLOOD_INVALID_CUVE
 static void
 eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 				 struct eap_method_ret *ret,
@@ -1132,7 +1132,7 @@ fin:
 		eap_pwd_h_final(hash, conf);
 }
 
-#endif // DRAGONBLOOD_TESTS
+#endif // DRAGONBLOOD_INVALID_CUVE
 
 
 static struct wpabuf *
