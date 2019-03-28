@@ -21,6 +21,10 @@
 // Only has an effect if DRAGONBLOOD_INVALID_CUVE is also set.
 #define DRAGONBLOOD_ARUBA_CLIENT
 
+// Perform reflection attacks against both SAE clients and against
+// EAP-PWD server implementations.
+#define DRAGONBLOOD_REFLECT
+
 void poc_log(const u8 *clientmac, const char *format, ...);
 
 #endif // ATTACKS_H_

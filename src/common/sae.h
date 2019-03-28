@@ -9,6 +9,9 @@
 #ifndef SAE_H
 #define SAE_H
 
+#include "common/attacks.h"
+#include "crypto/sha256.h"
+
 #define SAE_KCK_LEN 32
 #define SAE_PMK_LEN 32
 #define SAE_PMKID_LEN 16
@@ -58,6 +61,9 @@ struct sae_data {
 	unsigned int sync; /* protocol instance variable: Sync */
 	u16 rc; /* protocol instance variable: Rc (received send-confirm) */
 	struct sae_temporary_data *tmp;
+#ifdef DRAGONBLOOD_REFLECT
+	uint8_t received_confirm[SHA256_MAC_LEN];
+#endif
 };
 
 int sae_set_group(struct sae_data *sae, int group);

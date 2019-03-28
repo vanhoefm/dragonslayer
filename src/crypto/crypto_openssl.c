@@ -1641,6 +1641,12 @@ struct crypto_ec * crypto_ec_subgroup(int size, struct crypto_ec_point **out_gen
 	BN_free(x);
 	return e;
 }
+
+
+struct crypto_ec_point *crypto_ec_point_copy(struct crypto_ec_point *src, struct crypto_ec *e)
+{
+	return (struct crypto_ec_point *)EC_POINT_dup((const EC_POINT *)src, e->group);
+}
 #endif // DRAGONBLOOD_INVALID_CUVE
 
 struct crypto_ec * crypto_ec_init(int group)

