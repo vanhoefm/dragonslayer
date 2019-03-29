@@ -1280,12 +1280,12 @@ struct crypto_bignum * crypto_bignum_init_set(const u8 *buf, size_t len)
 }
 
 
-#ifdef DRAGONBLOOD_INVALID_CUVE
+#ifdef DRAGONBLOOD
 int crypto_bignum_setint(struct crypto_bignum *bignum, unsigned long value)
 {
 	return BN_set_word((BIGNUM *)bignum, value) ? 0 : -1;
 }
-#endif // DRAGONBLOOD_INVALID_CUVE
+#endif // DRAGONBLOOD
 
 
 void crypto_bignum_deinit(struct crypto_bignum *n, int clear)
@@ -1545,7 +1545,8 @@ struct crypto_ec {
 	BIGNUM *b;
 };
 
-#ifdef DRAGONBLOOD_INVALID_CUVE
+#ifdef DRAGONBLOOD
+
 static unsigned char a_bin[] = {0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfc};
 static unsigned char p_bin[] = {0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
@@ -1647,7 +1648,8 @@ struct crypto_ec_point *crypto_ec_point_copy(struct crypto_ec_point *src, struct
 {
 	return (struct crypto_ec_point *)EC_POINT_dup((const EC_POINT *)src, e->group);
 }
-#endif // DRAGONBLOOD_INVALID_CUVE
+#endif // DRAGONBLOOD
+
 
 struct crypto_ec * crypto_ec_init(int group)
 {

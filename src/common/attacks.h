@@ -14,7 +14,7 @@
 
 // Make changes to hostapd and wpa_supplicant to test several
 // of the DragonBlood attacks.
-#define DRAGONBLOOD_INVALID_CUVE
+//#define DRAGONBLOOD_INVALID_CUVE
 
 // Invalid curve attack against Aruba's Windows client: use a
 // scalar equal to zero, and as element the point at infinity.
