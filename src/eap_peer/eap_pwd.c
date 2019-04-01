@@ -948,7 +948,7 @@ eap_pwd_confirm_invalidcurve(struct eap_sm *sm, struct eap_pwd_data *data,
 			if (eap_pwd_confirm_check_key(sm, data, cs, cruft, ptr))
 				break;
 
-			wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm did not verify");
+			wpa_printf(MSG_DEBUG, "EAP-PWD (peer): confirm did not verify");
 			peer_rand++;
 		}
 
