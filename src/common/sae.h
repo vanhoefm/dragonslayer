@@ -61,9 +61,9 @@ struct sae_data {
 	unsigned int sync; /* protocol instance variable: Sync */
 	u16 rc; /* protocol instance variable: Rc (received send-confirm) */
 	struct sae_temporary_data *tmp;
-#ifdef DRAGONBLOOD_REFLECT
+#ifdef DRAGONSLAYER
 	uint8_t received_confirm[SHA256_MAC_LEN];
-#endif
+#endif // DRAGONSLAYER
 };
 
 int sae_set_group(struct sae_data *sae, int group);

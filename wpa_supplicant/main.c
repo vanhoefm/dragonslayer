@@ -17,7 +17,6 @@
 #include "driver_i.h"
 #include "p2p_supplicant.h"
 
-
 static void usage(void)
 {
 	int i;
@@ -177,7 +176,6 @@ static int wpa_supplicant_init_match(struct wpa_global *global)
 }
 #endif /* CONFIG_MATCH_IFACE */
 
-
 int main(int argc, char *argv[])
 {
 	int c, i;
@@ -201,10 +199,15 @@ int main(int argc, char *argv[])
 
 	for (;;) {
 		c = getopt(argc, argv,
-			   "b:Bc:C:D:de:f:g:G:hi:I:KLMm:No:O:p:P:qsTtuvW");
+			   "a:b:Bc:C:D:de:f:g:G:hi:I:KLMm:No:O:p:P:qsTtuvW");
 		if (c < 0)
 			break;
 		switch (c) {
+#ifdef DRAGONSLAYER
+		case 'a':
+			enable_dragonslayer(optarg);
+			break;
+#endif // DRAGONSLAYER
 		case 'b':
 			iface->bridge_ifname = optarg;
 			break;

@@ -900,10 +900,10 @@ struct wpabuf * crypto_ecdh_set_peerkey(struct crypto_ecdh *ecdh, int inc_y,
 					const u8 *key, size_t len);
 void crypto_ecdh_deinit(struct crypto_ecdh *ecdh);
 
-#ifdef DRAGONBLOOD
+#ifdef DRAGONSLAYER
 struct crypto_ec * crypto_ec_subgroup(int size, struct crypto_ec_point **out_generator);
 int crypto_bignum_setint(struct crypto_bignum *bignum, unsigned long value);
 struct crypto_ec_point *crypto_ec_point_copy(struct crypto_ec_point *src, struct crypto_ec *e);
-#endif // DRAGONBLOOD
+#endif // DRAGONSLAYER
 
 #endif /* CRYPTO_H */

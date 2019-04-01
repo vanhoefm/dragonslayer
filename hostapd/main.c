@@ -30,6 +30,7 @@
 #include "eap_register.h"
 #include "ctrl_iface.h"
 
+#include "common/attacks.h"
 
 struct hapd_global {
 	void **drv_priv;
@@ -37,7 +38,6 @@ struct hapd_global {
 };
 
 static struct hapd_global global;
-
 
 #ifndef CONFIG_NO_HOSTAPD_LOGGER
 static void hostapd_logger_cb(void *ctx, const u8 *addr, unsigned int module,
@@ -675,10 +675,15 @@ int main(int argc, char *argv[])
 #endif /* CONFIG_DPP */
 
 	for (;;) {
-		c = getopt(argc, argv, "b:Bde:f:hi:KP:sSTtu:vg:G:");
+		c = getopt(argc, argv, "a:b:Bde:f:hi:KP:sSTtu:vg:G:");
 		if (c < 0)
 			break;
 		switch (c) {
+#ifdef DRAGONSLAYER
+		case 'a':
+			enable_dragonslayer(optarg);
+			break;
+#endif // DRAGONSLAYER
 		case 'h':
 			usage();
 			break;

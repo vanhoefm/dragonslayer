@@ -20,6 +20,43 @@
 #include "defs.h"
 #include "wpa_common.h"
 
+#ifdef DRAGONSLAYER
+int dragonslayer_reflect = 0;
+int dragonslayer_invalidcurve = 0;
+int dragonslayer_invalidcurve_aruba = 0;
+
+int enable_dragonslayer(const char *stroption)
+{
+	int intoption = atoi(stroption);
+
+	switch (intoption)
+	{
+	case 0:
+		// EAP-pwd reflection attack.
+		dragonslayer_reflect = 1;
+		break;
+
+	case 1:
+		// EAP-pwd invalid curve attack.
+		dragonslayer_invalidcurve = 1;
+		break;
+
+	case 2:
+		// EAP-pwd invalid curve attack with scalar equal to order, and
+		// element equalt to zero.
+		dragonslayer_invalidcurve_aruba = 1;
+		break;
+
+	default:
+		printf("Dragon-Slayer: unrecognized attack option\n");
+		return -1;
+		// EAP-pwd invalid curve attack with element equal to zero
+		break;
+	}
+
+	return 0;
+}
+#endif // DRAGONSLAYER
 
 static unsigned int wpa_kck_len(int akmp, size_t pmk_len)
 {

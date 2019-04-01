@@ -14,7 +14,7 @@
 
 #include "common/attacks.h"
 
-#ifdef DRAGONBLOOD
+#ifdef DRAGONSLAYER
 #include <time.h>
 
 void poc_log(const u8 *clientmac, const char *format, ...)
@@ -39,7 +39,8 @@ void poc_log(const u8 *clientmac, const char *format, ...)
 
 	va_end(arg);
 }
-#endif
+
+#endif // DRAGONSLAYER
 
 /**
  * eap_hdr_len_valid - Validate EAP header length field

