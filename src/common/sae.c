@@ -729,11 +729,11 @@ static int sae_derive_commit(struct sae_data *sae)
 				crypto_ec_point_deinit(sae->tmp->own_commit_element_ecc, 0);
 			sae->tmp->own_commit_element_ecc = crypto_ec_point_copy(sae->tmp->peer_commit_element_ecc, sae->tmp->ec);
 
-			poc_log("\x00\x00\x00\x00\x00\x00", "Reflected scalar and element\n");
+			poc_log(sae->macaddr, "Reflected scalar and element\n");
 		}
 		else if (sae->tmp->dh)
 		{
-			poc_log("\x00\x00\x00\x00\x00\x00", "TODO: Reflect FFC element\n");
+			poc_log(sae->macaddr, "TODO: Reflect FFC element\n");
 			// TODO: Implement this
 			exit(1);
 		}
@@ -1416,7 +1416,7 @@ void sae_write_confirm(struct sae_data *sae, struct wpabuf *buf)
 		/** Overwrite the confirm value */
 		memcpy(wpabuf_put(buf, SHA256_MAC_LEN), sae->received_confirm, SHA256_MAC_LEN);
 
-		poc_log("\x00\x00\x00\x00\x00\x00", "Reflecting received confirm value\n");
+		poc_log(sae->macaddr, "Reflecting received confirm value\n");
 	}
 #endif // DRAGONSLAYER
 }
@@ -1454,7 +1454,7 @@ int sae_check_confirm(struct sae_data *sae, const u8 *data, size_t len)
 #ifdef DRAGONSLAYER
 	if (dragonslayer_reflect) {
 		memcpy(sae->received_confirm, data + 2, SHA256_MAC_LEN);
-		poc_log("\x00\x00\x00\x00\x00\x00", "Copied confirm from received Confirm frame\n");
+		poc_log(sae->macaddr, "Copied confirm from received Confirm frame\n");
 
 		// Don't verify the received confirm data
 		memcpy(verifier, data + 2, SHA256_MAC_LEN);

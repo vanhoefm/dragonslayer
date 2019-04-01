@@ -981,7 +981,7 @@ eap_pwd_confirm_invalidcurve(struct eap_sm *sm, struct eap_pwd_data *data,
 	}
 
 	wpa_printf(MSG_DEBUG, "EAP-pwd (peer): confirm verified");
-	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "successfully recovered the session key. Peer is vulnerable to invalid curve attack!\n");
+	poc_log(eapol_sm_get_addr(sm->eapol_ctx), "successfully recovered the session key. Server is vulnerable to invalid curve attack!\n");
 
 	// ========================================== PART 2: Calculate our confirm =================================================
 

@@ -63,6 +63,7 @@ struct sae_data {
 	struct sae_temporary_data *tmp;
 #ifdef DRAGONSLAYER
 	uint8_t received_confirm[SHA256_MAC_LEN];
+	uint8_t macaddr[6];
 #endif // DRAGONSLAYER
 };
 

@@ -53,6 +53,7 @@
 #include "dpp_hostapd.h"
 #include "gas_query_ap.h"
 
+#include "common/attacks.h"
 
 #ifdef CONFIG_FILS
 static struct wpabuf *
@@ -1001,6 +1002,9 @@ static void handle_auth_sae(struct hostapd_data *hapd, struct sta_info *sta,
 		}
 		sae_set_state(sta, SAE_NOTHING, "Init");
 		sta->sae->sync = 0;
+#ifdef DRAGONSLAYER
+		memcpy(sta->sae->macaddr, sta->addr, 6);
+#endif // DRAGONSLAYER
 	}
 
 	if (sta->mesh_sae_pmksa_caching) {

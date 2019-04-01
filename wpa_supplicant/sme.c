@@ -31,6 +31,8 @@
 #include "sme.h"
 #include "hs20_supplicant.h"
 
+#include "common/attacks.h"
+
 #define SME_AUTH_TIMEOUT 5
 #define SME_ASSOC_TIMEOUT 5
 
@@ -147,6 +149,9 @@ reuse_data:
 	}
 	sae_write_commit(&wpa_s->sme.sae, buf, wpa_s->sme.sae_token,
 			 ssid->sae_password_id);
+#ifdef DRAGONSLAYER
+	memcpy(wpa_s->sme.sae.macaddr, bssid, 6);
+#endif // DRAGONSLAYeR
 
 	return buf;
 }

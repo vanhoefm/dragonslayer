@@ -991,6 +991,9 @@ eap_pwd_process_confirm_resp(struct eap_sm *sm, struct eap_pwd_data *data,
 	}
 
 	wpa_printf(MSG_DEBUG, "EAP-pwd (server): confirm verified");
+#ifdef DRAGONSLAYER
+	poc_log(sm->peer_addr, "Successfully recovered the session key. Client is vulnerable to invalid curve attack!\n");
+#endif // DRAGONSLAYER
 	if (compute_keys(data->grp, data->k,
 			 data->peer_scalar, data->my_scalar, conf,
 			 data->my_confirm, &cs, data->msk, data->emsk,

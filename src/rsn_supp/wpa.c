@@ -568,6 +568,13 @@ static void wpa_supplicant_process_1_of_4(struct wpa_sm *sm,
 	u8 *kde, *kde_buf = NULL;
 	size_t kde_len;
 
+#ifdef DRAGONSLAYER
+	if(dragonslayer_reflect)
+	{
+		poc_log(src_addr, "AP is initiating 4-way handshake => server is vulnerable to reflection attack!\n");
+	}
+#endif // DRAGONSLAYER
+
 	if (wpa_sm_get_network_ctx(sm) == NULL) {
 		wpa_msg(sm->ctx->msg_ctx, MSG_WARNING, "WPA: No SSID info "
 			"found (msg 1 of 4)");
