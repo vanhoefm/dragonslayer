@@ -21,10 +21,9 @@ The attack parameters of our tool are:
 
 - `-a 0`: perform reflection attack.
 - `-a 1`: perform invalid curve attack.
-- `-a 2`: perform second variant of the invalid curve attack
+- `-a 2`: perform second variant of the invalid curve attack. This variant is highly experimental.
 
-See the examples below for more information.
-The wrapper scripts `dragonslayer-client.sh` and `dragonslayer-server.sh` are contained in the directory `dragonslayer`.
+See the examples below for more information. The wrapper scripts `dragonslayer-client.sh` and `dragonslayer-server.sh` are contained in the directory `dragonslayer`. To increase the amount of debug output, you can add the parameter `-d` or `-dd` to both attack tools.
 
 # Testing attacks against the server
 
@@ -33,22 +32,23 @@ The wrapper scripts `dragonslayer-client.sh` and `dragonslayer-server.sh` are co
 Edit the file `dragonslayer/client.conf` and specify:
 
 1. The SSID of the network name using the `ssid` parameter.
-2. A valid EAP-pwd username using the `identity` parameter. The attacks don't work with an invalid username.
+2. A valid EAP-pwd username using the `identity` parameter. The attacks only work if an existing identity is specified.
 3. Leave the other parameters untouched.
 
 An example of `dragonslayer/client.conf` is the following:
 
 	network={
-		ssid="dragonblood"
+		ssid="dragonslayer"
+		identity="bob"
+
 		key_mgmt=WPA-EAP
 		eap=PWD
-		identity="bob"
 		password="unknown password"
 	}
 
 ## Invalid curve attack
 
-To test whether an EAP-pwd server is vulnerable to invalid curve attacks, start `dragonslayer-client.sh` using the `-a 1` parameter. You must also specify the wireless interface being used with the `-i` parameter. For example:
+To test whether an EAP-pwd server is vulnerable to invalid curve attacks, start `dragonslayer-client.sh` using the `-a 1` parameter. You must also specify the wireless interface to use with the `-i` parameter. For example:
 
 	[mathy@mathy-work dragonslayer]$ sudo ./dragonslayer-client.sh -i wlp2s0 -a 1
 	[sudo] password for mathy: 
@@ -75,14 +75,14 @@ To test whether an EAP-pwd server is vulnerable to invalid curve attacks, start 
 	wlp2s0: WPA: Key negotiation completed with 38:2c:4a:c1:69:c0 [PTK=CCMP GTK=CCMP]
 	wlp2s0: CTRL-EVENT-CONNECTED - Connection to 38:2c:4a:c1:69:c0 completed [id=0 id_str=]
 
-Notice that the tool will display **Server is vulnerable to invalid curve attack!** if it is indeed vulnerable. If this message is not vulnerable, try performing the attack a few times again. If none of the attack attempts succeed, the EAP-pwd server is not vulnerable to this specific attack. In this case, also try attacking the EAP-pwd server using a small variant of the invalid curve attack using the `-a 2` parameter:
+Notice that the tool will display **Server is vulnerable to invalid curve attack!** if it is indeed vulnerable. If this message is not displayed, try performing the attack a few times again. If none of the attack attempts succeed, the EAP-pwd server is not vulnerable to this specific attack. In this case, also try attacking the EAP-pwd server using a small variant of the invalid curve attack using the `-a 2` parameter:
 
 	[mathy@mathy-work dragonslayer]$ sudo ./dragonslayer-client.sh -i wlp2s0 -a 1
 	...
 
 Similar to the case above, it will display **Server is vulnerable to invalid curve attack!** if it is indeed vulnerable. If this message is not displayed after several attempts, the EAP-pwd server is not vulnerable to this specific attack.
 
-We also recommend that you audit the server code itself. It can be that these specific attacks don't work, but that more specialized attacks would still work.
+If the tool doesn't seem to be working, remember that you can let it output more debug messages using for example `./dragonslayer-client.sh -i wlan0 -a 1 -d`. We also recommend that you audit the server code to check that it validates the received scalar and Elliptic Curve point. It can be that these specific attacks don't work, but that more specialized attacks do work.
 
 
 ## Reflection attack
@@ -114,17 +114,18 @@ To test whether an EAP-pwd server is vulnerable to a reflection attack, start `d
 	[03:22:13] 38:2c:4a:c1:69:c0: AP is initiating 4-way handshake => server is vulnerable to reflection attack!
 	[03:22:14] 38:2c:4a:c1:69:c0: AP is initiating 4-way handshake => server is vulnerable to reflection attack!
 
-The tool will display **server is vulnerable to reflection attack!** if it is vulnerable. If this message is not display, try executing the attack several times. If the server is never detected as being vulnerable, it is not vulnerable to this specific attack.
+The tool will display **server is vulnerable to reflection attack!** if it is vulnerable. If this message is not displayed, try executing the attack several times. If the server is never detected as being vulnerable, it is not vulnerable to this specific attack.
+
 
 # Testing attacks against the client
 
 ## Preperation
 
-First modify `dragonslayer/hostapd.conf` and **edit the line `interface=` to specify the Wi-Fi interface** that will be used to execute the tests. Note that for all tests, once the script is running, you must let the device being tested connect to the **SSID dragonslayer with as username bob** and the password can be anything. You can change settings of the AP by modifying `dragonslayer/hostapd.conf`.
+First modify `dragonslayer/hostapd.conf` and **edit the line `interface=` to specify the Wi-Fi interface** that will be used to execute the tests. Note that for all tests, once the script is running, you must let the device being tested connect to the **network "dragonslayer" with as username "bob"**. The password can be anything. You can change settings of the AP by modifying `dragonslayer/hostapd.conf`.
 
 ## Invalid curve attack
 
-To test whether an EAP-pwd client is vulnerable to invalid curve attacks, start `dragonslayer-server.sh` using the `-a 1` parameter. Using the server is running, connect to it with the client you want to test. For example:
+To test whether an EAP-pwd client is vulnerable to invalid curve attacks, start `dragonslayer-server.sh` using the `-a 1` parameter. Once the server is running, connect to it with the client you want to test. Example output is:
 
 	[mathy@mathy-work dragonslayer]$ sudo ./dragonslayer-server.sh -a 1
 	Configuration file: hostapd.conf
@@ -147,5 +148,11 @@ To test whether an EAP-pwd client is vulnerable to invalid curve attacks, start 
 	wlp2s0: STA c4:e9:84:db:fb:7b RADIUS: starting accounting session 35BB5B4BB3793544
 	wlp2s0: STA c4:e9:84:db:fb:7b IEEE 802.1X: authenticated - EAP type: 0 (unknown)
 
-The tool will display **Client is vulnerable to invalid curve attack!** if it is vulnerable. If this message is not display, try executing the attack several times. If the server is never detected as being vulnerable, it is not vulnerable to this specific attack.
+The tool will display **Client is vulnerable to invalid curve attack!** if it is vulnerable. The **attack has a 33% chance of failing**. So if this message is not display, you must try executing the attack several times again (i.e. try connecting again using the client). You can only assume the client isn't vulnerable after trying to attack several times!
+
+
+# General Remarks
+
+- The wireless interface doesn't have to be set to monitor mode. This is the case for all our attack tools.
+- If things don't work, it can really help to unplug your Wi-Fi adapter, and plug it back it. Especially when using a virtual machine.
 
