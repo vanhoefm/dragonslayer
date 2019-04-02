@@ -25,7 +25,7 @@ int dragonslayer_reflect = 0;
 int dragonslayer_invalidcurve = 0;
 int dragonslayer_invalidcurve_aruba = 0;
 
-int enable_dragonslayer(const char *stroption)
+int enable_dragonslayer(const char *stroption, int is_server)
 {
 	int intoption = atoi(stroption);
 
@@ -48,10 +48,14 @@ int enable_dragonslayer(const char *stroption)
 		break;
 
 	default:
-		printf("Dragon-Slayer: unrecognized attack option\n");
+		printf("Dragonslayer: unrecognized attack option\n");
 		return -1;
-		// EAP-pwd invalid curve attack with element equal to zero
-		break;
+	}
+
+	if (is_server && dragonslayer_reflect) {
+		printf("Dragonslayer: cannot perform reflection attack against clients.\n"
+		       "Please specify a different attack type using -a <id>.\n");
+		exit(1);
 	}
 
 	return 0;

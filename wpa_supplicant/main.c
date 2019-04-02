@@ -222,7 +222,7 @@ int main(int argc, char *argv[])
 		switch (c) {
 #ifdef DRAGONSLAYER
 		case 'a':
-			enable_dragonslayer(optarg);
+			enable_dragonslayer(optarg, 0);
 			break;
 #endif // DRAGONSLAYER
 		case 'b':

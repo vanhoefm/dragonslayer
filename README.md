@@ -5,9 +5,9 @@ This is an experimental tool to test EAP-pwd implementations for vulnerabilities
 Our scripts were tested on Kali Linux. To install the required dependencies on Kali, execute:
 
 	apt-get update
-	apt-get install libnl-3-dev libnl-genl-3-dev pkg-config libssl-dev net-tools git
+	apt-get install libnl-3-dev libnl-genl-3-dev pkg-config libssl-dev net-tools git libdbus-1-dev
 
-After this, compile our modified hostapd and wpa_supplicant tools:
+After this, inside the repository directory compile our modified hostapd and wpa_supplicant tools:
 
       cd dragonslayer
       ./build.sh
@@ -24,6 +24,7 @@ The attack parameters of our tool are:
 - `-a 2`: perform second variant of the invalid curve attack
 
 See the examples below for more information.
+The wrapper scripts `dragonslayer-client.sh` and `dragonslayer-server.sh` are contained in the directory `dragonslayer`.
 
 # Testing attacks against the server
 
@@ -86,7 +87,7 @@ We also recommend that you audit the server code itself. It can be that these sp
 
 ## Reflection attack
 
-To test whether an EAP-pwd server is vulnerable to a reflection attack, start `dragonslayer-client.sh` using the `-a 1` parameter. You must also specify the wireless interface being used with the `-i` parameter. For example:
+To test whether an EAP-pwd server is vulnerable to a reflection attack, start `dragonslayer-client.sh` using the `-a 0` parameter. You must also specify the wireless interface being used with the `-i` parameter. For example:
 
 	[mathy@mathy-work dragonslayer]$ sudo ./dragonslayer-client.sh -i wlp2s0 -a 0
 	Successfully initialized wpa_supplicant

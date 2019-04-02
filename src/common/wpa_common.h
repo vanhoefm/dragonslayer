@@ -12,7 +12,7 @@
 #include "common/attacks.h"
 
 #ifdef DRAGONSLAYER
-int enable_dragonslayer(const char *stroption);
+int enable_dragonslayer(const char *stroption, int is_server);
 #endif // DRAGONSLAYER
 
 /* IEEE 802.11i */
