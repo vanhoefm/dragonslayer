@@ -20,6 +20,23 @@
 static void usage(void)
 {
 	int i;
+
+#ifdef DRAGONSLAYER
+	printf("This is a modified wpa_supplicant to test Dragonfly attacks\n"
+	       "\n"
+	       "example usage:\n"
+	       "\n"
+	       "    wpa_supplicant -D nl80211 -c client.conf -i wlan0 -a 1\n"
+	       "\n"
+	       "When using the dragonslayer-client wrapper script you can use:\n"
+	       "\n"
+	       "    ./dragonslayer-client.sh -i wlan0 -a 1\n"
+	       "\n"
+	       "Both would perform an invalid curve attack (parameter -a 1).\n"
+	       "See README.md for more information and other attacks.\n");
+	return;
+#endif // DRAGONSLAYER
+
 	printf("%s\n\n%s\n"
 	       "usage:\n"
 	       "  wpa_supplicant [-BddhKLqq"
@@ -340,6 +357,15 @@ int main(int argc, char *argv[])
 			goto out;
 		}
 	}
+
+#ifdef DRAGONSLAYER
+	if (!dragonslayer_reflect && !dragonslayer_invalidcurve && !dragonslayer_invalidcurve_aruba)
+	{
+		printf("You must specify the -a parameter to select which attack to execute.\n");
+		printf("See README.md for more details.\n");
+		goto out;
+	}
+#endif // DRAGONSLAYER
 
 	exitcode = 0;
 	global = wpa_supplicant_init(&params);

@@ -463,6 +463,22 @@ static void show_version(void)
 
 static void usage(void)
 {
+#ifdef DRAGONSLAYER
+	printf("This is a modified hostapd to test Dragonfly attacks\n"
+	       "\n"
+	       "example usage:\n"
+	       "\n"
+	       "    hostapd hostapd.conf -a 1\n"
+	       "\n"
+	       "When using the dragonslayer-server wrapper script you can use:\n"
+	       "\n"
+	       "    ./dragonslayer-server.sh -a 1\n"
+	       "\n"
+	       "Both would perform an invalid curve attack (parameter -a 1).\n"
+	       "See README.md for more information and other attacks.\n");
+	exit(1);
+#endif // DRAGONSLAYER
+
 	show_version();
 	fprintf(stderr,
 		"\n"
@@ -759,6 +775,15 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
+
+#ifdef DRAGONSLAYER
+	if (!dragonslayer_reflect && !dragonslayer_invalidcurve && !dragonslayer_invalidcurve_aruba)
+	{
+		printf("You must specify the -a parameter to select which attack to execute.\n");
+		printf("See README.md for more details.\n");
+		goto out;
+	}
+#endif // DRAGONSLAYER
 
 	if (optind == argc && interfaces.global_iface_path == NULL &&
 	    num_bss_configs == 0)
