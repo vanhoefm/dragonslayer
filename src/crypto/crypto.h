@@ -904,6 +904,7 @@ void crypto_ecdh_deinit(struct crypto_ecdh *ecdh);
 struct crypto_ec * crypto_ec_subgroup(int size, struct crypto_ec_point **out_generator);
 int crypto_bignum_setint(struct crypto_bignum *bignum, unsigned long value);
 struct crypto_ec_point *crypto_ec_point_copy(struct crypto_ec_point *src, struct crypto_ec *e);
+struct crypto_ec_point * crypto_ec_point_get_zeroscalar_element(struct crypto_ec *e);
 #endif // DRAGONSLAYER
 
 #endif /* CRYPTO_H */

@@ -15,6 +15,7 @@
 extern int dragonslayer_reflect;
 extern int dragonslayer_invalidcurve;
 extern int dragonslayer_invalidcurve_aruba;
+extern int dragonslayer_badscalar;
 
 void poc_log(const u8 *clientmac, const char *format, ...);
 

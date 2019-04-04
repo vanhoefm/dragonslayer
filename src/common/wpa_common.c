@@ -24,6 +24,7 @@
 int dragonslayer_reflect = 0;
 int dragonslayer_invalidcurve = 0;
 int dragonslayer_invalidcurve_aruba = 0;
+int dragonslayer_badscalar = 0;
 
 int enable_dragonslayer(const char *stroption, int is_server)
 {
@@ -47,6 +48,11 @@ int enable_dragonslayer(const char *stroption, int is_server)
 		dragonslayer_invalidcurve_aruba = 1;
 		break;
 
+	case 3:
+		// SAE bad scalar attack (e.g. against IWD)
+		dragonslayer_badscalar = 1;
+		break;
+
 	default:
 		printf("Dragonslayer: unrecognized attack option\n");
 		return -1;
@@ -54,6 +60,10 @@ int enable_dragonslayer(const char *stroption, int is_server)
 
 	if (is_server && dragonslayer_reflect) {
 		printf("Dragonslayer: cannot perform reflection attack against clients.\n"
+		       "Please specify a different attack type using -a <id>.\n");
+		exit(1);
+	} else if (!is_server && dragonslayer_badscalar) {
+		printf("Dragonslayer: the bad-scalar attack is only implemented against clients.\n"
 		       "Please specify a different attack type using -a <id>.\n");
 		exit(1);
 	}

