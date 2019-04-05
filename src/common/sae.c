@@ -1422,7 +1422,7 @@ void sae_write_confirm(struct sae_data *sae, struct wpabuf *buf)
 	if (sae->send_confirm < 0xffff)
 		sae->send_confirm++;
 
-#ifndef DRAGONSLAYER
+#ifdef DRAGONSLAYER
 	if (!dragonslayer_reflect)
 	{
 #endif // DRAGONSLAYER
@@ -1438,7 +1438,7 @@ void sae_write_confirm(struct sae_data *sae, struct wpabuf *buf)
 					   sae->peer_commit_scalar,
 					   sae->tmp->peer_commit_element_ffc,
 					   wpabuf_put(buf, SHA256_MAC_LEN));
-#ifndef DRAGONSLAYER
+#ifdef DRAGONSLAYER
 	} else {
 		/** Overwrite the confirm value */
 		memcpy(wpabuf_put(buf, SHA256_MAC_LEN), sae->received_confirm, SHA256_MAC_LEN);
