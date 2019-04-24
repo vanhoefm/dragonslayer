@@ -1,4 +1,4 @@
-This is an experimental tool to test EAP-pwd implementations for vulnerabilities. We also strongly recommend to perform code inspections to assure all vulnerabilities have been properly addressed.
+This is an experimental tool to test WPA3's SAE and EAP-pwd implementations for vulnerabilities. We also strongly recommend to perform code inspections to assure all vulnerabilities have been properly addressed.
 
 # Prerequisites
 
@@ -19,9 +19,10 @@ Remember to disable Wi-Fi in your network manager before using our scripts. Afte
 
 The attack parameters of our tool are:
 
-- `-a 0`: perform reflection attack.
-- `-a 1`: perform invalid curve attack.
-- `-a 2`: perform second variant of the invalid curve attack. This variant is highly experimental.
+- `-a 0`: perform reflection attack against either WPA3's SAE or EAP-pwd.
+- `-a 1`: perform invalid curve attack against EAP-pwd.
+- `-a 2`: perform second variant of the invalid curve attack against EAP-pwd. This variant is highly experimental.
+- `-a 3`: perform zero-scalar attack against WPA3's SAE.
 
 See the examples below for more information. The wrapper scripts `dragonslayer-client.sh` and `dragonslayer-server.sh` are contained in the directory `dragonslayer`. To increase the amount of debug output, you can add the parameter `-d` or `-dd` to both attack tools.
 
@@ -117,13 +118,18 @@ To test whether an EAP-pwd server is vulnerable to a reflection attack, start `d
 The tool will display **server is vulnerable to reflection attack!** if it is vulnerable. If this message is not displayed, try executing the attack several times. If the server is never detected as being vulnerable, it is not vulnerable to this specific attack.
 
 
+## Zero-scalar attack against WPA3's SAE
+
+**TODO: Small description**
+
+
 # Testing attacks against the client
 
 ## Preperation
 
 First modify `dragonslayer/hostapd.conf` and **edit the line `interface=` to specify the Wi-Fi interface** that will be used to execute the tests. Note that for all tests, once the script is running, you must let the device being tested connect to the **network "dragonslayer" with as username "bob"**. The password can be anything. You can change settings of the AP by modifying `dragonslayer/hostapd.conf`.
 
-## Invalid curve attack
+## Invalid curve attack against EAP-pwd
 
 To test whether an EAP-pwd client is vulnerable to invalid curve attacks, start `dragonslayer-server.sh` using the `-a 1` parameter. Once the server is running, connect to it with the client you want to test. Example output is:
 
@@ -150,9 +156,22 @@ To test whether an EAP-pwd client is vulnerable to invalid curve attacks, start 
 
 The tool will display **Client is vulnerable to invalid curve attack!** if it is vulnerable. The **attack has a 33% chance of failing**. So if this message is not display, you must try executing the attack several times again (i.e. try connecting again using the client). You can only assume the client isn't vulnerable after trying to attack several times!
 
+## Reflection attack against WPA3's SAE
+
+**TODO: Small description**
+
+## Zero-scalar attack against WPA3's SAE
+
+**TODO: Small description**
 
 # General Remarks
 
 - The wireless interface doesn't have to be set to monitor mode. This is the case for all our attack tools.
 - If things don't work, it can really help to unplug your Wi-Fi adapter, and plug it back it. Especially when using a virtual machine.
+
+# TODOs
+
+- **For all attack variants, check or force we're using the correct group.**
+- **Force the correct group and `wpa_keymgnt` based on the selected attack**
+- **In the badscalar (iwd) attack allow to set the scalar either to zero or to the order of the curve**
 
